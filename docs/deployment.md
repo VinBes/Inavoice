@@ -11,7 +11,7 @@
 - Docker and Docker Compose installed
 - Python 3.11+
 - A Telegram bot token (from @BotFather)
-- API keys for Whisper (OpenAI), Claude (Anthropic), Resend
+- API keys for Claude (Anthropic), Resend
 - A Supabase project (free tier)
 
 ### Docker Compose Setup
@@ -74,7 +74,6 @@ Most development and testing should happen locally without hitting paid APIs. Th
 
 ### What still requires API calls
 
-- Whisper transcription (~$0.006/min)
 - Claude API parsing (~$0.01-0.03/call)
 - Resend email sending (free tier)
 
@@ -84,9 +83,7 @@ Most development and testing should happen locally without hitting paid APIs. Th
 
 Set `MOCK_MODE=true` in your `.env` to enable local mocks for all external APIs. The app checks this flag and swaps real API clients for mock implementations.
 
-**Whisper mock:** Skip transcription entirely. During development, type commands as text — the bot accepts text input alongside voice. When you need to test voice, cache a few real Whisper transcriptions as JSON fixtures in `tests/fixtures/` and replay them.
-
-**Claude API mock:** Cache 5-10 real Claude API responses for typical voice commands as JSON fixtures. In mock mode, the parser returns the cached response that best matches the input (simple keyword matching is fine). Only hit the real API when testing new prompt changes or edge cases.
+**Claude API mock:** Cache 5-10 real Claude API responses for typical text commands as JSON fixtures. In mock mode, the parser returns the cached response that best matches the input (simple keyword matching is fine). Only hit the real API when testing new prompt changes or edge cases.
 
 **Email mock:** In mock mode, emails are logged to stdout instead of sent via Resend. The log shows the full email (to, subject, body) so you can verify correctness without spamming real clients. Alternatively, always choose "download in Telegram" during dev.
 
@@ -95,13 +92,10 @@ Set `MOCK_MODE=true` in your `.env` to enable local mocks for all external APIs.
 ```
 tests/
   fixtures/
-    whisper_responses/
-      invoice_aer_march26.json
-      invoice_surge_feb06.json
     claude_responses/
-      aer_hourly_full.json
-      aer_hourly_missing_rate.json
-      surge_flat_fee.json
+      client_a_hourly_full.json
+      client_a_hourly_missing_rate.json
+      client_b_flat_fee.json
       unknown_client.json
 ```
 
@@ -135,9 +129,6 @@ Each fixture is a real API response captured once and reused. To refresh fixture
 TELEGRAM_BOT_TOKEN=
 ALLOWED_CHAT_IDS=  # comma-separated, e.g. 123456789
 
-# === OpenAI (Whisper) ===
-OPENAI_API_KEY=
-
 # === Anthropic (Claude) ===
 ANTHROPIC_API_KEY=
 
@@ -168,7 +159,6 @@ LOGO_PATH=assets/vence-zaraffa-logo.png
 
 # === Cost Guardrails ===
 DAILY_CLAUDE_API_CAP=20
-DAILY_WHISPER_API_CAP=20
 SESSION_LLM_CALL_CAP=5
 MONTHLY_COST_ALERT_THRESHOLD=5
 

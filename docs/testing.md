@@ -26,11 +26,11 @@ Test that the backend correctly handles LLM output JSON — validation, default 
 ```
 Input (mock LLM output):
 {
-  "client_id": "aesthetic_radio",
-  "description": "Invoice for AER Hong Kong, Art.berdeen booking",
+  "client_id": "client_a",
+  "description": "Invoice for Client A booking",
   "line_items": [{
     "service_date": "26/03/2026",
-    "service_description": "DJ set at AER (Aesthetic Radio) Hong Kong",
+    "service_description": "Service for Client A",
     "time_start": "22:00",
     "time_end": "00:00",
     "rate": 500,
@@ -52,11 +52,11 @@ Expected backend computation:
 ```
 Input (mock LLM output):
 {
-  "client_id": "surge_entertainment",
-  "description": "Invoice for sound system services",
+  "client_id": "client_b",
+  "description": "Invoice for Client B services",
   "line_items": [{
     "service_date": "15/04/2026",
-    "service_description": "Sound system setup at Watermark",
+    "service_description": "Service for Client B",
     "time_start": null,
     "time_end": null,
     "rate": 2000,
@@ -76,7 +76,7 @@ Expected backend computation:
 ```
 Input (mock LLM output):
 {
-  "client_id": "aesthetic_radio",
+  "client_id": "client_a",
   "description": null,
   "line_items": [{
     "service_date": "26/03/2026",
@@ -90,14 +90,14 @@ Input (mock LLM output):
   "missing_fields": []
 }
 
-Client defaults (aesthetic_radio):
-- default_description: "Invoice for AER Hong Kong booking"
-- default_service_description: "DJ set at AER (Aesthetic Radio) Hong Kong"
+Client defaults (client_a):
+- default_description: "Invoice for Client A booking"
+- default_service_description: "Service for Client A"
 - default_rate: 500
 
 Expected:
-- description: "Invoice for AER Hong Kong booking" (from default)
-- service_description: "DJ set at AER (Aesthetic Radio) Hong Kong" (from default)
+- description: "Invoice for Client A booking" (from default)
+- service_description: "Service for Client A" (from default)
 - rate: 500 (from default)
 - hours: 2
 - total: 1000
@@ -119,7 +119,7 @@ Expected: validation error — 0 hours is invalid
 
 **Test 1.6 — Missing required field, no client default**
 ```
-Input: client_id "aesthetic_radio" (which has default_rate: 500)
+Input: client_id "client_a" (which has default_rate: 500)
        but rate is null AND client has no default_rate (test with a different client)
 Expected: "rate" flagged as missing, bot asks user
 ```
@@ -258,28 +258,28 @@ Expected: counter resets at midnight HKT
 
 ```json
 {
-  "aesthetic_radio": {
-    "display_name": "OnAer Ltd.",
+  "client_a": {
+    "display_name": "Client A Ltd.",
     "contact_person": null,
-    "address": "UG/F, Soho, Ming Hing House,\n52-56 Staunton St, Central, Hong Kong",
-    "email": "accounts@onaer.example.com",
-    "default_description": "Invoice for AER Hong Kong booking",
-    "default_service_description": "DJ set at AER (Aesthetic Radio) Hong Kong",
+    "address": "{{CLIENT_A_ADDRESS}}",
+    "email": "accounts@client-a.example.com",
+    "default_description": "Invoice for Client A booking",
+    "default_service_description": "Service for Client A",
     "default_rate": 500
   },
-  "surge_entertainment": {
-    "display_name": "Surge Entertainment",
-    "contact_person": "Tamoh Gamseh Sergius",
-    "address": "68 Hing Fat St.\nCauseway Bay, Hong Kong SAR",
+  "client_b": {
+    "display_name": "Client B Ltd.",
+    "contact_person": "{{CLIENT_B_CONTACT}}",
+    "address": "{{CLIENT_B_ADDRESS}}",
     "email": null,
-    "default_description": "Invoice for sound system & equipment services",
-    "default_service_description": "Sound system setup and operation",
+    "default_description": "Invoice for Client B services",
+    "default_service_description": "Service for Client B",
     "default_rate": null
   }
 }
 ```
 
-Note: `surge_entertainment` has no email (tests email-not-available path) and no default_rate (tests missing field path).
+Note: `client_b` has no email (tests email-not-available path) and no default_rate (tests missing field path).
 
 ---
 

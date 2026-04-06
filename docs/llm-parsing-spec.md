@@ -64,8 +64,8 @@ The LLM prompt includes the full list of known client aliases and display names.
 
 ```
 Known clients:
-- "aesthetic_radio" → OnAer Ltd. (aliases: "aesthetic radio", "aer", "on aer")
-- "surge_entertainment" → Surge Entertainment (aliases: "surge", "surge entertainment")
+- "client_a" → Client A Ltd. (aliases: "{{CLIENT_A_ALIASES}}")
+- "client_b" → Client B Ltd. (aliases: "{{CLIENT_B_ALIASES}}")
 ```
 
 ### Matching Rules
@@ -123,12 +123,12 @@ Output schema:
 
 ### Example
 
-**Input:** "Invoice aesthetic radio, March 26, playing from 10 to midnight. Agreed fee was 500 Hong Kong dollars an hour."
+**Input:** "Invoice client a, March 26, playing from 10 to midnight. Agreed fee was 500 Hong Kong dollars an hour."
 
 **Output:**
 ```json
 {
-  "client_id": "aesthetic_radio",
+  "client_id": "client_a",
   "description": null,
   "line_items": [
     {
