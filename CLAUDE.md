@@ -66,23 +66,53 @@ Text → Claude parses → Confirm/Edit/Cancel → PDF → Email or Telegram
 
 ## Spec Documents
 
-| Document | Location | Contents |
-|----------|----------|----------|
-| Spec | `docs/spec.md` | Full system spec |
-| LLM Parsing Spec | `docs/llm-parsing-spec.md` | JSON schema, prompts, edge cases |
-| Template Spec | `docs/template-spec.md` | Invoice layout, fields, styling |
-| Email Spec | `docs/email-spec.md` | Email body, Resend config |
-| Deployment Guide | `docs/deployment.md` | Docker, Railway, pause/resume, env vars |
-| Testing | `docs/testing.md` | Test cases, pytest strategy |
+| Document | Contents |
+|----------|----------|
+| [Spec](docs/spec.md) | Full system spec |
+| [LLM Parsing Spec](docs/llm-parsing-spec.md) | JSON schema, prompts, edge cases |
+| [Template Spec](docs/template-spec.md) | Invoice layout, fields, styling |
+| [Email Spec](docs/email-spec.md) | Email body, Resend config |
+| [Deployment Guide](docs/deployment.md) | Docker, Railway, pause/resume, env vars |
+| [Testing](docs/testing.md) | Test cases, pytest strategy |
 
 ## Development Rules
 
-- Run `pytest` before every push
-- Push to main triggers Railway auto-deploy
+- Before implementing any feature, read the relevant spec document first. Spec documents are listed in the Spec Documents table in this file.
+- Push to main triggers Railway auto-deploy; rollback via dashboard if needed
 - All secrets in `.env` (never in code, always in .gitignore)
 - No PII or bank details in any tracked file — use `{{VARIABLE}}` references
 - Log to stdout with structlog (JSON format, session IDs)
-- Railway auto-deploys from main; rollback via dashboard if needed
+- A pre-push hook at `hooks/pre-push` enforces the checklist below — do not skip it. After cloning, activate it once with `git config core.hooksPath hooks`
+
+## Dependency Management
+
+- Direct deps declared in `requirements.in` (prod) and `requirements-dev.in` (dev, starts with `-r requirements.in`)
+- Generate lockfiles with `pip-compile --generate-hashes --allow-unsafe`; commit both `.in` and `.txt` files
+- Never hand-edit lockfiles — always regenerate
+- Upgrade via `pip-compile --upgrade`, review the diff, rerun tests
+- Dockerfile installs with `pip install --require-hashes -r requirements.txt`
+
+## Security Constraints
+
+These are hard rules. Never violate them regardless of context.
+
+- **No PII/secrets in logs** — never log or echo bank details, API keys, addresses, or any secret value. Log only `client_id`, `invoice_number`, `session_id`, and error messages.
+- **Auth gate first** — the first line of every Telegram handler must check `ALLOWED_CHAT_IDS`. No work happens before this check passes.
+- **Validate every external input with Pydantic, not dicts** — treat all Claude API responses, user input, and external data as untrusted. Always validate with Pydantic models before the data touches the DB or file system.
+- **Secrets via config.py only** — env vars are loaded once in `config.py`. No other module may call `os.environ` or `os.getenv` directly.
+- **Supabase least privilege** — Use SUPABASE_SERVICE_KEY for all database and storage operations. The anon key is not used in this project — do not introduce it.
+- **Dependency audit before push** — run `pip-audit -r requirements.txt` and `pip-audit -r requirements-dev.txt`; no push if known vulnerabilities are found.
+
+## Commands
+
+| Task | Command |
+|------|---------|
+| Run locally | `docker compose up` |
+| Recompile prod lockfile | `docker run --rm -v "$(pwd):/app" -w /app python:3.13-slim sh -c "pip install pip-tools && pip-compile --generate-hashes --allow-unsafe --output-file=requirements.txt requirements.in"` |
+| Recompile dev lockfile | `docker run --rm -v "$(pwd):/app" -w /app python:3.13-slim sh -c "pip install pip-tools && pip-compile --generate-hashes --allow-unsafe --output-file=requirements-dev.txt requirements-dev.in"` |
+| Security audit (required before push) | `pip-audit -r requirements.txt && pip-audit -r requirements-dev.txt` |
+| Run tests | `pytest tests/` |
+| Build + smoke test | `docker build -t inavoice-test . && docker run --rm inavoice-test python -c "import anthropic, telegram, weasyprint, supabase; print('ok')"` |
 
 ## Future Directions
 

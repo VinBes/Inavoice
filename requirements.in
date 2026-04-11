@@ -1,0 +1,9 @@
+python-telegram-bot[webhooks]>=20.0
+anthropic
+weasyprint
+jinja2
+supabase
+resend
+pydantic>=2.0
+structlog
+python-dotenv

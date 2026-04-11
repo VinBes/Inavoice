@@ -1,7 +1,10 @@
 .env
-.env.local
+.env.*
 __pycache__/
 *.pyc
+*.key
+*.pem
 .DS_Store
+.venv/
 
 .claude/settings.local.json
