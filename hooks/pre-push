@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -e
+
+echo "Running pre-push checks..."
+
+echo "→ pytest"
+pytest
+
+echo "→ pip-audit (prod)"
+pip-audit -r requirements.txt
+
+echo "→ pip-audit (dev)"
+pip-audit -r requirements-dev.txt
+
+echo "All checks passed."

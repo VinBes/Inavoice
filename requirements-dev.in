@@ -1,0 +1,6 @@
+-r requirements.in
+pip-tools
+pip-audit
+pytest
+pytest-asyncio
+watchdog
