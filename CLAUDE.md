@@ -74,6 +74,7 @@ Text → Claude parses → Confirm/Edit/Cancel → PDF → Email or Telegram
 | [Email Spec](docs/email-spec.md) | Email body, Resend config |
 | [Deployment Guide](docs/deployment.md) | Docker, Railway, pause/resume, env vars |
 | [Testing](docs/testing.md) | Test cases, pytest strategy |
+| [Changelog](docs/CHANGELOG.md) | Deviations from spec and significant decisions |
 
 ## Development Rules
 
@@ -83,6 +84,7 @@ Text → Claude parses → Confirm/Edit/Cancel → PDF → Email or Telegram
 - No PII or bank details in any tracked file — use `{{VARIABLE}}` references
 - Log to stdout with structlog (JSON format, session IDs)
 - A pre-push hook at `hooks/pre-push` enforces the checklist below — do not skip it. After cloning, activate it once with `git config core.hooksPath hooks`
+- **Changelog:** When implementing a feature that deviates from a spec document, or when a significant architectural decision is made, append an entry to `docs/CHANGELOG.md` in the same response. Skip entries for normal spec-compliant implementation, refactors, test additions, and bug fixes.
 
 ## Dependency Management
 
