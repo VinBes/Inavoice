@@ -4,10 +4,10 @@ Track what has been built. Update checkboxes as modules are completed.
 
 ---
 
-- [ ] `config.py` — env var loading, constants
-- [ ] `models/session.py` — session dataclass
-- [ ] `models/schemas.py` — pydantic models for LLM output validation
-- [ ] `db/client.py` — supabase client wrapper
+- [x] `config.py` — env var loading, constants
+- [x] `models/session.py` — session dataclass
+- [x] `models/schemas.py` — pydantic models for LLM output validation
+- [x] `db/client.py` — supabase client wrapper
 - [ ] `db/contacts.py` — contacts CRUD
 - [ ] `db/invoices.py` — invoices CRUD
 - [ ] `bot/handlers.py` — telegram command/message handlers
