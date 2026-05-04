@@ -1,15 +1,24 @@
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
-from datetime import datetime
 
-from models.schemas import InvoiceData
+PENDING = "PENDING"
+CONFIRMED = "CONFIRMED"
+GENERATING = "GENERATING"
+COMPLETE = "COMPLETE"
+CANCELLED = "CANCELLED"
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 @dataclass
 class Session:
-    chat_id: int
-    started_at: datetime = field(default_factory=datetime.utcnow)
-    raw_input: Optional[str] = None
-    parsed_data: Optional[InvoiceData] = None
+    state: str = PENDING
+    parsed_data: Optional[dict] = None
     llm_call_count: int = 0
-    state: str = "idle"  # idle | awaiting_confirm | awaiting_delivery
+    created_at: datetime = field(default_factory=_now)
+    last_active: datetime = field(default_factory=_now)
+    invoice_number: Optional[str] = None
+    message_id: Optional[int] = None
