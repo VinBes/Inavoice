@@ -75,9 +75,12 @@ Text → Claude parses → Confirm/Edit/Cancel → PDF → Email or Telegram
 | [Deployment Guide](docs/deployment.md) | Docker, Railway, pause/resume, env vars |
 | [Testing](docs/testing.md) | Test cases, pytest strategy |
 | [Changelog](docs/CHANGELOG.md) | Deviations from spec and significant decisions |
+| [Status](docs/STATUS.md) | Build progress — what is done vs. pending |
 
 ## Development Rules
 
+
+- At the start of every session, read `docs/STATUS.md` to understand what has been built and what is still pending.
 - Before implementing any feature, read the relevant spec document first. Spec documents are listed in the Spec Documents table in this file.
 - Push to main triggers Railway auto-deploy; rollback via dashboard if needed
 - All secrets in `.env` (never in code, always in .gitignore)
@@ -85,6 +88,13 @@ Text → Claude parses → Confirm/Edit/Cancel → PDF → Email or Telegram
 - Log to stdout with structlog (JSON format, session IDs)
 - A pre-push hook at `hooks/pre-push` enforces the checklist below — do not skip it. After cloning, activate it once with `git config core.hooksPath hooks`
 - **Changelog:** When implementing a feature that deviates from a spec document, or when a significant architectural decision is made, append an entry to `docs/CHANGELOG.md` in the same response. Skip entries for normal spec-compliant implementation, refactors, test additions, and bug fixes.
+
+**Branching workflow:**
+- ALWAYS create a feature branch before starting any major changes — never commit directly to `main`
+- Branch naming: `feature/description` or `fix/description`
+- Workflow: branch → develop → test locally (`pytest tests/`, `docker compose up`) → push → open PR → merge to `main`
+- PRs must include a description of what changed and why
+- NEVER force push to `main`
 
 ## Dependency Management
 
