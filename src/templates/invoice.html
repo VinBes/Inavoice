@@ -4,11 +4,230 @@
   <meta charset="UTF-8">
   <title>Invoice {{ invoice_number }}</title>
   <style>
-    /* TODO: implement per docs/template-spec.md */
-    body { font-family: sans-serif; }
+    @page {
+      size: A4;
+      margin: 25mm;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 10.5pt;
+      color: #000;
+      margin: 0;
+    }
+
+    /* Two-row header table: row 1 = logo, row 2 = INVOICE + date/number */
+    table.page-header {
+      width: 100%;
+      border-collapse: collapse;
+      border: none;
+      margin-bottom: 0;
+    }
+    table.page-header td {
+      border: none;
+      padding: 0;
+    }
+    .header-logo-left {
+      width: 55%;
+    }
+    .header-logo-right {
+      width: 45%;
+      text-align: right;
+      vertical-align: top;
+      padding-bottom: 6pt;
+    }
+    .header-logo-right img {
+      height: 72pt;
+      display: block;
+      margin-left: auto;
+    }
+    .header-title-left {
+      width: 55%;
+      vertical-align: top;
+      padding-top: 6pt;
+    }
+    .header-date-right {
+      width: 45%;
+      text-align: right;
+      vertical-align: top;
+    }
+
+    h1.invoice-title {
+      font-size: 26pt;
+      font-weight: bold;
+      margin: 0;
+      padding: 0;
+      letter-spacing: -0.5pt;
+    }
+
+    .hdr-label {
+      font-weight: bold;
+      margin: 0 0 1pt 0;
+      font-size: 10.5pt;
+    }
+    .hdr-value {
+      margin: 0 0 6pt 0;
+      font-size: 10.5pt;
+    }
+
+    /* Sender block — slightly indented to match reference */
+    .sender-block {
+      margin: 14pt 0 10pt 16pt;
+      line-height: 1.45;
+    }
+
+    .description {
+      margin: 0 0 10pt 0;
+    }
+
+    .recipient-block {
+      margin: 0 0 14pt 0;
+      line-height: 1.45;
+    }
+
+    /* Invoice line-item table */
+    table.invoice-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10.5pt;
+      margin-bottom: 44pt;
+    }
+
+    table.invoice-table th {
+      font-weight: bold;
+      text-align: left;
+      border: 1pt solid #000;
+      padding: 4pt 5pt;
+    }
+
+    table.invoice-table td {
+      border: 1pt solid #000;
+      padding: 4pt 5pt;
+      vertical-align: bottom;
+    }
+
+    /* Column widths matching reference proportions */
+    .col-date    { width: 13%; }
+    .col-service { width: 30%; }
+    .col-time    { width: 14%; }
+    .col-hours   { width: 10%; text-align: center; }
+    .col-rate    { width: 16%; }
+    .col-total   { width: 17%; text-align: right; }
+
+    /* Total row */
+    .total-row-empty {
+      border-left: 1pt solid #000;
+      border-bottom: 1pt solid #000;
+      border-top: 1pt solid #000;
+      border-right: none;
+    }
+    .total-label {
+      text-align: right;
+      font-weight: bold;
+      border: 1pt solid #000;
+      padding: 4pt 5pt;
+    }
+    .total-value {
+      text-align: right;
+      font-weight: bold;
+      border: 1pt solid #000;
+      padding: 4pt 5pt;
+    }
+
+    /* Footer sections */
+    .section-label {
+      font-weight: bold;
+      margin: 0 0 3pt 0;
+    }
+    .section-value {
+      margin: 0 0 12pt 0;
+      line-height: 1.5;
+    }
+    .business-reg {
+      margin-top: 8pt;
+    }
   </style>
 </head>
 <body>
-  <p>Invoice {{ invoice_number }} — template not yet implemented.</p>
+
+<table class="page-header">
+  <tr>
+    <td class="header-logo-left"></td>
+    <td class="header-logo-right">
+      <img src="assets/vence-zaraffa-logo.png" alt="">
+    </td>
+  </tr>
+  <tr>
+    <td class="header-title-left">
+      <h1 class="invoice-title">INVOICE</h1>
+    </td>
+    <td class="header-date-right">
+      <p class="hdr-label">Invoice Date</p>
+      <p class="hdr-value">{{ invoice_date }}</p>
+      <p class="hdr-label">Invoice Number</p>
+      <p class="hdr-value">{{ invoice_number }}</p>
+    </td>
+  </tr>
+</table>
+
+<div class="sender-block">
+  {{ sender_name }}<br>
+  {% for line in sender_address_lines %}{{ line }}<br>{% endfor %}
+</div>
+
+<p class="description">{{ description }}</p>
+
+<div class="recipient-block">
+  {{ display_name }}<br>
+  {% for line in address_lines %}{{ line }}<br>{% endfor %}
+</div>
+
+<table class="invoice-table">
+  <thead>
+    <tr>
+      <th class="col-date">Date</th>
+      <th class="col-service">Service</th>
+      <th class="col-time">Time</th>
+      <th class="col-hours">Hours</th>
+      <th class="col-rate">Rate</th>
+      <th class="col-total">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="col-date">{{ service_date }}</td>
+      <td class="col-service">{{ service_description }}</td>
+      <td class="col-time">
+        {%- if time_start %}{{ time_start }} - {{ time_end }}{% else %}—{% endif %}
+      </td>
+      <td class="col-hours">
+        {%- if hours is not none %}{{ hours }}{% else %}—{% endif %}
+      </td>
+      <td class="col-rate">{{ rate }} HKD</td>
+      <td class="col-total">{{ total }} HKD</td>
+    </tr>
+    <tr>
+      <td colspan="4" class="total-row-empty"></td>
+      <td class="total-label">total (HKD)</td>
+      <td class="total-value">{{ total }} HKD</td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="section-label">Due Date</p>
+<p class="section-value">{{ due_date }}</p>
+
+<p class="section-label">Account Details</p>
+<p class="section-value">
+  Bank code: {{ bank_code }} - {{ bank_name }}<br>
+  Branch code - account number: {{ bank_account }}<br>
+  Account holder&#39;s name: {{ account_holder }}<br>
+  FPS: {{ fps_id }}
+</p>
+
+<p class="business-reg">{{ business_registration }}</p>
+
 </body>
 </html>

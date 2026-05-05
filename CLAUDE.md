@@ -98,6 +98,7 @@ Text → Claude parses → Confirm/Edit/Cancel → PDF → Email or Telegram
 
 ## Dependency Management
 
+- **Always use the project virtual environment (`.venv`) — never install packages to the global or user Python.** Run all Python commands via `.venv/bin/python`, `.venv/bin/pytest`, `.venv/bin/pip`, etc.
 - Direct deps declared in `requirements.in` (prod) and `requirements-dev.in` (dev, starts with `-r requirements.in`)
 - Generate lockfiles with `pip-compile --generate-hashes --allow-unsafe`; commit both `.in` and `.txt` files
 - Never hand-edit lockfiles — always regenerate
