@@ -83,7 +83,10 @@ def _load_mock_response(text: str, contacts: list[dict] | None) -> LLMOutput:
     if contacts:
         for contact in contacts:
             cid = contact["client_id"]
-            if cid.lower() in text_lower or contact["display_name"].lower() in text_lower:
+            cid_lower = cid.lower()
+            if (cid_lower in text_lower
+                    or cid_lower.replace("_", " ") in text_lower
+                    or contact["display_name"].lower() in text_lower):
                 candidates = sorted(FIXTURES_DIR.glob(f"{cid}_*.json"))
                 if candidates:
                     matched_fixture = candidates[0]
