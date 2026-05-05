@@ -1,0 +1,16 @@
+{
+  "client_id": "client_b",
+  "description": "Invoice for Client B services",
+  "line_items": [
+    {
+      "service_date": "15/04/2026",
+      "service_description": "Service for Client B",
+      "time_start": null,
+      "time_end": null,
+      "rate": 2000,
+      "rate_type": "flat",
+      "total": null
+    }
+  ],
+  "missing_fields": []
+}
