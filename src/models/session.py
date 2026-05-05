@@ -16,7 +16,8 @@ def _now() -> datetime:
 @dataclass
 class Session:
     state: str = PENDING
-    parsed_data: Optional[dict] = None
+    parsed_data: Optional[dict] = None   # LLMOutput-shaped dict; used as previous_data for correction LLM calls
+    computed_data: Optional[dict] = None  # flat merged/computed dict; used for PDF + confirmation display
     llm_call_count: int = 0
     created_at: datetime = field(default_factory=_now)
     last_active: datetime = field(default_factory=_now)

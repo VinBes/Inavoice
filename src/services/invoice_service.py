@@ -1,9 +1,17 @@
+import asyncio
 from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from models.schemas import LLMOutput
+import structlog
+
 import config
+from db.client import get_client
+from db.invoices import next_invoice_number, save_invoice
+from models.schemas import LLMOutput
+from services.pdf_generator import generate_pdf
+
+log = structlog.get_logger()
 
 HKT = ZoneInfo(config.TIMEZONE)
 
@@ -39,6 +47,8 @@ def merge_and_compute(parsed: LLMOutput, contact: dict) -> dict:
     return {
         "client_id": parsed.client_id,
         "display_name": contact["display_name"],
+        "contact_person": contact.get("contact_person"),
+        "address": contact.get("address", ""),
         "email": contact.get("email"),
         "description": description,
         "service_date": item.service_date,
@@ -66,6 +76,52 @@ def _compute_hours(time_start: str, time_end: str) -> Decimal:
     return Decimal(end - start) / 60
 
 
-async def create_invoice(data: dict) -> str:
-    """Generate invoice number, store PDF, save to DB. Returns invoice_number."""
-    raise NotImplementedError
+async def create_invoice(data: dict) -> tuple[str, bytes]:
+    """Claim invoice number, generate PDF, upload to storage, save to DB.
+
+    Returns (invoice_number, pdf_bytes). pdf_bytes are returned so the handler
+    can deliver them via Telegram without a second download from storage.
+    """
+    today = datetime.now(HKT).date()
+    invoice_number = await next_invoice_number(today.year)
+
+    pdf_bytes = await generate_pdf(data, invoice_number)
+
+    if data.get("total") is None:
+        raise ValueError("Cannot create invoice: total is None")
+
+    storage_path = f"{today.year}/{invoice_number}.pdf"
+
+    def _upload() -> None:
+        get_client().storage.from_("invoices").upload(
+            storage_path, pdf_bytes, {"content-type": "application/pdf"}
+        )
+
+    await asyncio.to_thread(_upload)
+
+    await save_invoice({
+        "invoice_number": invoice_number,
+        "client_id": data["client_id"],
+        "invoice_date": str(data["invoice_date"]),
+        "due_date": str(data["due_date"]),
+        "description": data["description"],
+        "line_items": [{
+            "service_date": data["service_date"],
+            "service_description": data["service_description"],
+            "time_start": data.get("time_start"),
+            "time_end": data.get("time_end"),
+            "rate": str(data["rate"]),
+            "rate_type": data["rate_type"],
+            "total": str(data["total"]),
+        }],
+        "subtotal": str(data["total"]),
+        "pdf_storage_path": storage_path,
+        "email_sent": False,
+    })
+
+    log.info(
+        "invoice_service.created",
+        invoice_number=invoice_number,
+        client_id=data["client_id"],
+    )
+    return invoice_number, pdf_bytes
