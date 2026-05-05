@@ -1,0 +1,16 @@
+{
+  "client_id": null,
+  "description": null,
+  "line_items": [
+    {
+      "service_date": "26/03/2026",
+      "service_description": null,
+      "time_start": null,
+      "time_end": null,
+      "rate": null,
+      "rate_type": "hourly",
+      "total": null
+    }
+  ],
+  "missing_fields": ["client_id"]
+}
