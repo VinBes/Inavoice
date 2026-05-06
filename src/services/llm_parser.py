@@ -81,6 +81,23 @@ def _build_client_list(contacts: list[dict]) -> str:
     return "\n".join(f'- "{c["client_id"]}" → {c["display_name"]}' for c in contacts)
 
 
+def _strip_code_fence(text: str) -> str:
+    """Remove a ```/```json markdown fence if Claude wrapped the JSON in one.
+
+    The system prompt forbids markdown, but Haiku occasionally wraps anyway.
+    """
+    text = text.strip()
+    if not text.startswith("```"):
+        return text
+    first_newline = text.find("\n")
+    if first_newline == -1:
+        return text
+    inner = text[first_newline + 1 :].rstrip()
+    if inner.endswith("```"):
+        inner = inner[:-3]
+    return inner.strip()
+
+
 def _load_mock_response(text: str, contacts: list[dict] | None) -> LLMOutput:
     text_lower = text.lower()
     matched_fixture: pathlib.Path | None = None
@@ -185,7 +202,7 @@ async def parse_invoice_text(
     log.info("llm_parser.response", preview=raw_text[:120])
 
     try:
-        data = json.loads(raw_text)
+        data = json.loads(_strip_code_fence(raw_text))
     except json.JSONDecodeError as e:
         raise LLMParseError(f"LLM returned invalid JSON: {e}") from e
 

@@ -9,6 +9,7 @@ import pytest
 
 from models.schemas import LLMLineItem, LLMOutput
 from services.invoice_service import merge_and_compute
+from services.llm_parser import _strip_code_fence
 
 # ---------------------------------------------------------------------------
 # Shared test data (per testing.md)
@@ -220,3 +221,18 @@ def test_1_9_negative_rate():
     parsed = _make_output(rate=-500, rate_type="hourly", time_start="22:00", time_end="00:00")
     with pytest.raises(ValueError, match="rate must be positive"):
         merge_and_compute(parsed, CLIENT_A)
+
+
+# ---------------------------------------------------------------------------
+# _strip_code_fence — defensive parsing for markdown-wrapped LLM responses
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("wrapped,expected", [
+    ('```json\n{"a": 1}\n```', '{"a": 1}'),
+    ('```\n{"a": 1}\n```', '{"a": 1}'),
+    ('  ```json\n{"a": 1}\n```  ', '{"a": 1}'),
+    ('{"a": 1}', '{"a": 1}'),
+    ('```json\n{\n  "client_id": "client_a"\n}\n```', '{\n  "client_id": "client_a"\n}'),
+])
+def test_strip_code_fence(wrapped, expected):
+    assert _strip_code_fence(wrapped) == expected
