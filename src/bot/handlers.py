@@ -21,6 +21,7 @@ from services.email_sender import send_invoice_email
 from services.invoice_service import create_invoice, merge_and_compute
 from services.llm_parser import (
     DailyCapExceededError,
+    LLMAPIError,
     LLMParseError,
     LLMValidationError,
     SessionCapExceededError,
@@ -95,6 +96,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except SessionCapExceededError:
         await update.message.reply_text(
             "Too many corrections — please cancel and start over."
+        )
+        return
+    except LLMAPIError:
+        await update.message.reply_text(
+            "The AI service is temporarily unavailable. Please try again in a few minutes."
         )
         return
     except (LLMParseError, LLMValidationError):

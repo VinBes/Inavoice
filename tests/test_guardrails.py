@@ -1,12 +1,16 @@
 """Tests 5.1–5.2: daily API cap and per-session LLM call cap."""
 from datetime import date
+from unittest.mock import AsyncMock
 
+import anthropic
+import httpx
 import pytest
 
 import config
 import services.llm_parser as llm_parser
 from services.llm_parser import (
     DailyCapExceededError,
+    LLMAPIError,
     SessionCapExceededError,
     parse_invoice_text,
 )
@@ -76,3 +80,33 @@ async def test_5_2_session_cap_at_boundary():
         pytest.fail("SessionCapExceededError should not be raised below the cap")
     except Exception:
         pass  # LLMParseError from mock with no contacts is fine
+
+
+# ---------------------------------------------------------------------------
+# Anthropic API errors (e.g. insufficient credits, auth, rate limit) are
+# converted to the domain-level LLMAPIError so the handler can reply to the
+# user instead of letting the exception bubble out of python-telegram-bot.
+# ---------------------------------------------------------------------------
+
+async def test_anthropic_api_error_becomes_llm_api_error(monkeypatch):
+    _reset_daily()
+    monkeypatch.setattr(config, "MOCK_MODE", False)
+
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx.Response(
+        400,
+        request=request,
+        json={"type": "error", "error": {"type": "invalid_request_error",
+                                          "message": "Your credit balance is too low"}},
+    )
+
+    fake_client = AsyncMock()
+    fake_client.messages.create.side_effect = anthropic.BadRequestError(
+        message="credit balance too low", response=response, body=None
+    )
+    monkeypatch.setattr(llm_parser, "_get_client", lambda: fake_client)
+
+    with pytest.raises(LLMAPIError):
+        await parse_invoice_text("invoice for client a", contacts=[], session_call_count=0)
+
+    _reset_daily()
