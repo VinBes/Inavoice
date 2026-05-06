@@ -41,7 +41,8 @@ async def send_invoice_email(
             "text": body,
             "attachments": [{
                 "filename": f"Invoice_{invoice_number}.pdf",
-                "content": pdf_bytes,
+                "content": list(pdf_bytes),
+                "content_type": "application/pdf",
             }],
         })
 
