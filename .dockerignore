@@ -1,0 +1,55 @@
+# === Secrets — must never enter the image ===
+.env
+.env.*
+
+# === Local Python environment (not the runtime's) ===
+.venv
+venv
+env
+
+# === Python build/cache artifacts ===
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+build
+dist
+
+# === Version control & CI ===
+.git
+.gitignore
+.gitattributes
+.github
+
+# === Tests & dev-only deps (not needed at runtime) ===
+tests
+pytest.ini
+requirements-dev.in
+requirements-dev.txt
+
+# === Docs & local notes ===
+docs
+NOTES.md
+CLAUDE.md
+README.md
+*.md
+
+# === Tooling / editor / OS ===
+.claude
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# === Compose & Docker meta (host-only) ===
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile
+.dockerignore
+hooks
