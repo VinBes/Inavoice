@@ -226,8 +226,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     contact_person, display_name, due_date,
                 )
                 await query.message.reply_text(f"Invoice sent to {email}.")
-            except Exception:
-                log.exception("email_send.failed", invoice_number=invoice_number)
+            except Exception as e:
+                log.error(
+                    "email_send.failed",
+                    invoice_number=invoice_number,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
                 await query.message.reply_text(
                     "Invoice generated but email failed to send. Here's your PDF."
                 )
