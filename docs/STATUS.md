@@ -19,4 +19,4 @@ Track what has been built. Update checkboxes as modules are completed.
 - [x] `services/invoice_service.py` — `merge_and_compute` + `create_invoice` (number → PDF → storage → DB)
 - [x] `templates/invoice.html` — jinja2 invoice template (matches Vence reference design)
 - [x] `src/__main__.py` — entry point (run_polling)
-- [ ] Docker / Railway deployment
+- [x] Docker / Railway deployment
