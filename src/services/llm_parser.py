@@ -47,6 +47,11 @@ class LLMValidationError(Exception):
     pass
 
 
+class LLMAPIError(Exception):
+    """Raised when the Anthropic API itself returns an error (auth, billing, rate limit, network)."""
+    pass
+
+
 class DailyCapExceededError(Exception):
     pass
 
@@ -165,12 +170,16 @@ async def parse_invoice_text(
             f"Output schema:\n{_JSON_SCHEMA}"
         )
 
-    response = await _get_client().messages.create(
-        model=_MODEL,
-        max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": text}],
-    )
+    try:
+        response = await _get_client().messages.create(
+            model=_MODEL,
+            max_tokens=1024,
+            system=system,
+            messages=[{"role": "user", "content": text}],
+        )
+    except anthropic.APIError as e:
+        log.error("llm_parser.api_error", error_type=type(e).__name__, status=getattr(e, "status_code", None))
+        raise LLMAPIError(str(e)) from e
 
     raw_text = response.content[0].text
     log.info("llm_parser.response", preview=raw_text[:120])
