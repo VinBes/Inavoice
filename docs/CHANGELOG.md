@@ -8,6 +8,46 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-07 — Contact model + guided /contacts add
+
+- **`Contact` Pydantic model added (`models/schemas.py`).** Validates `client_id`
+  against a slug regex (`^[a-z0-9_]{1,64}$`), `email` against a deliberately
+  lenient regex (no `email-validator` dependency — Resend re-validates at send
+  time), and `default_rate > 0`. `db/contacts.py` now returns `Contact`/`list[Contact]`
+  on read and accepts a `Contact` on write. **Read validation is strict**: if a
+  Supabase row fails `Contact.model_validate`, the `ValidationError` propagates
+  and the existing handler `try/except` surfaces a generic error. This is
+  intentional — a malformed contact row is a data-integrity problem, not a
+  recoverable user error.
+
+- **`Contact` plumbed through services and handlers, not just the DB boundary.**
+  `merge_and_compute` and `resend_invoice` (`services/invoice_service.py`) now
+  take a `Contact` and use attribute access; the `/start` and `/contacts` listings
+  in `bot/handlers.py` follow suit. `services/llm_parser.py` accepts either
+  `Contact` instances or dicts via `getattr(... or ...["..."])` so existing test
+  fixtures don't need to wrap rows.
+
+- **`Session.mode` discriminator added** (`"invoice" | "add_contact"`, default
+  `"invoice"`). Additive: existing `Session()` constructions are unchanged.
+  `contact_draft: Optional[dict]` field added to hold partial collection state.
+
+- **Guided `/contacts add` flow added (`bot/contact_flow.py`).** Step-by-step
+  prompts for the eight Contact fields; `skip` accepted on optional fields
+  (`contact_person`, `email`, `default_description`, `default_service_description`,
+  `default_rate`). Validation per step routes through the `Contact` model so the
+  rule lives in one place. Final step shows a summary with `[Confirm] [Cancel]`;
+  Confirm validates the draft and calls `upsert_contact`.
+
+- **Conflict rule for `/contacts add` (not in spec):** if an invoice session is
+  in `GENERATING`, the command is blocked with "An invoice is being generated.
+  Please wait." Any session in `PENDING` is silently replaced with a notice
+  ("Pending draft cancelled. Starting contact setup…"). Single-user MVP — no
+  persisted draft, no safety win in forcing `/cancel` first.
+
+- **`/contacts` command extended** — `context.args == ["add"]` starts the guided
+  flow; no args lists contacts as before. No new Telegram command registered;
+  argument-style sub-command keeps the surface minimal.
+
 ## 2026-05-07 — Atomic Confirm + /invoices + /resend
 
 - **Confirm and delivery collapsed into one tap (spec §3 step 7 deviation).** The two-step flow (Confirm → choose Email/Telegram/Both) is now a single tap. New keyboard layout: contacts with email show `[Confirm + Email] [Confirm (Telegram)]` on row 1 and `[Edit] [Cancel]` on row 2; contacts without email show `[Confirm] [Edit] [Cancel]`. Reason: a Railway redeploy between Confirm and the delivery tap was burning the invoice number and stranding the PDF in storage with no recovery path. Collapsing the flow eliminates the in-memory `pdf_bytes` round-trip via `context.user_data` so a process restart cannot strand a partially delivered invoice. The "Both" option is dropped — `Confirm + Email` always also delivers the PDF via Telegram (matches the existing email-spec invariant). Spec §3 and email-spec §Delivery Rules updated.

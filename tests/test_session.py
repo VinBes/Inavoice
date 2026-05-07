@@ -8,7 +8,7 @@ import config
 from bot import handlers
 from bot.handlers import _sessions, _timeout_callback, handle_callback, handle_message
 from models.session import CANCELLED, COMPLETE, GENERATING, PENDING, Session
-from models.schemas import LLMLineItem, LLMOutput
+from models.schemas import Contact, LLMLineItem, LLMOutput
 from services.llm_parser import SessionCapExceededError
 
 # ---------------------------------------------------------------------------
@@ -203,12 +203,12 @@ async def test_3_2_edit_loop():
         )],
         missing_fields=[],
     )
-    _contact = {
-        "client_id": "client_a", "display_name": "Client A Ltd.", "contact_person": None,
-        "address": "Test Address", "email": "test@client-a.example.com",
-        "default_description": "Invoice for Client A booking",
-        "default_service_description": "Service for Client A", "default_rate": 500,
-    }
+    _contact = Contact(
+        client_id="client_a", display_name="Client A Ltd.", contact_person=None,
+        address="Test Address", email="test@client-a.example.com",
+        default_description="Invoice for Client A booking",
+        default_service_description="Service for Client A", default_rate=Decimal("500"),
+    )
     msg_update = _make_message_update("change description to Updated description")
     ctx2 = _make_context()
     with (

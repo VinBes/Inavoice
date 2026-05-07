@@ -96,8 +96,18 @@ async def _check_and_increment_daily(today: date) -> None:
         )
 
 
-def _build_client_list(contacts: list[dict]) -> str:
-    return "\n".join(f'- "{c["client_id"]}" → {c["display_name"]}' for c in contacts)
+def _build_client_list(contacts: list) -> str:
+    """Render the known-clients block for the system prompt.
+
+    Accepts either Contact instances (production) or plain dicts (legacy/test
+    fixtures); attribute access via getattr handles both without forcing every
+    test fixture to wrap rows in Contact.
+    """
+    return "\n".join(
+        f'- "{getattr(c, "client_id", None) or c["client_id"]}" → '
+        f'{getattr(c, "display_name", None) or c["display_name"]}'
+        for c in contacts
+    )
 
 
 def _strip_code_fence(text: str) -> str:
@@ -117,17 +127,20 @@ def _strip_code_fence(text: str) -> str:
     return inner.strip()
 
 
-def _load_mock_response(text: str, contacts: list[dict] | None) -> LLMOutput:
+def _load_mock_response(text: str, contacts: list | None) -> LLMOutput:
     text_lower = text.lower()
     matched_fixture: pathlib.Path | None = None
 
     if contacts:
         for contact in contacts:
-            cid = contact["client_id"]
+            cid = getattr(contact, "client_id", None) or contact["client_id"]
+            display_name = (
+                getattr(contact, "display_name", None) or contact["display_name"]
+            )
             cid_lower = cid.lower()
             if (cid_lower in text_lower
                     or cid_lower.replace("_", " ") in text_lower
-                    or contact["display_name"].lower() in text_lower):
+                    or display_name.lower() in text_lower):
                 candidates = sorted(FIXTURES_DIR.glob(f"{cid}_*.json"))
                 if candidates:
                     matched_fixture = candidates[0]
@@ -177,7 +190,7 @@ async def _call_anthropic_with_retry(system: str, text: str):
 async def parse_invoice_text(
     text: str,
     previous_data: dict | None = None,
-    contacts: list[dict] | None = None,
+    contacts: list | None = None,
     session_call_count: int = 0,
 ) -> LLMOutput:
     """Parse invoice text via Claude API (initial or correction mode).

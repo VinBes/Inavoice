@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from models.schemas import LLMLineItem, LLMOutput
+from models.schemas import Contact, LLMLineItem, LLMOutput
 from services.invoice_service import merge_and_compute
 from services.llm_parser import _strip_code_fence
 
@@ -15,27 +15,27 @@ from services.llm_parser import _strip_code_fence
 # Shared test data (per testing.md)
 # ---------------------------------------------------------------------------
 
-CLIENT_A = {
-    "client_id": "client_a",
-    "display_name": "Client A Ltd.",
-    "contact_person": None,
-    "address": "{{CLIENT_A_ADDRESS}}",
-    "email": "accounts@client-a.example.com",
-    "default_description": "Invoice for Client A booking",
-    "default_service_description": "Service for Client A",
-    "default_rate": 500,
-}
+CLIENT_A = Contact(
+    client_id="client_a",
+    display_name="Client A Ltd.",
+    contact_person=None,
+    address="123 Test Road, Hong Kong",
+    email="accounts@client-a.example.com",
+    default_description="Invoice for Client A booking",
+    default_service_description="Service for Client A",
+    default_rate=Decimal("500"),
+)
 
-CLIENT_B = {
-    "client_id": "client_b",
-    "display_name": "Client B Ltd.",
-    "contact_person": "{{CLIENT_B_CONTACT}}",
-    "address": "{{CLIENT_B_ADDRESS}}",
-    "email": None,
-    "default_description": "Invoice for Client B services",
-    "default_service_description": "Service for Client B",
-    "default_rate": None,
-}
+CLIENT_B = Contact(
+    client_id="client_b",
+    display_name="Client B Ltd.",
+    contact_person="Test Contact",
+    address="456 Test Road, Hong Kong",
+    email=None,
+    default_description="Invoice for Client B services",
+    default_service_description="Service for Client B",
+    default_rate=None,
+)
 
 
 def _make_output(
@@ -182,14 +182,15 @@ def test_1_7_unknown_client_note():
     caller passes a valid contact for an unknown client_id, computation succeeds.
     The handler verifies client_id against the contacts table before calling here.
     """
-    fake_contact = {
-        "client_id": "nonexistent",
-        "display_name": "Ghost Client",
-        "email": None,
-        "default_description": "Ghost invoice",
-        "default_service_description": "Ghost service",
-        "default_rate": 100,
-    }
+    fake_contact = Contact(
+        client_id="nonexistent",
+        display_name="Ghost Client",
+        address="Ghost address",
+        email=None,
+        default_description="Ghost invoice",
+        default_service_description="Ghost service",
+        default_rate=Decimal("100"),
+    )
     parsed = _make_output(client_id="nonexistent", rate=100, rate_type="hourly",
                           time_start="10:00", time_end="12:00")
     result = merge_and_compute(parsed, fake_contact)

@@ -17,7 +17,7 @@ from db.invoices import (
     save_invoice,
     update_last_resent_at,
 )
-from models.schemas import LLMOutput
+from models.schemas import Contact, LLMOutput
 from services.email_sender import send_invoice_email
 from services.pdf_generator import generate_pdf
 
@@ -41,7 +41,7 @@ class ResendResult:
     email_status_message: Optional[str]
 
 
-def merge_and_compute(parsed: LLMOutput, contact: dict) -> dict:
+def merge_and_compute(parsed: LLMOutput, contact: Contact) -> dict:
     """Merge LLM output with client defaults and compute derived fields.
 
     Returns a flat dict ready for format_confirmation and PDF generation.
@@ -49,10 +49,10 @@ def merge_and_compute(parsed: LLMOutput, contact: dict) -> dict:
     """
     item = parsed.line_items[0]
 
-    description = parsed.description or contact.get("default_description")
-    service_description = item.service_description or contact.get("default_service_description")
+    description = parsed.description or contact.default_description
+    service_description = item.service_description or contact.default_service_description
 
-    raw_rate = item.rate if item.rate is not None else contact.get("default_rate")
+    raw_rate = item.rate if item.rate is not None else contact.default_rate
     if raw_rate is None:
         raise ValueError("rate is required but not provided and contact has no default_rate")
     rate = Decimal(str(raw_rate))
@@ -71,10 +71,10 @@ def merge_and_compute(parsed: LLMOutput, contact: dict) -> dict:
     today = datetime.now(HKT).date()
     return {
         "client_id": parsed.client_id,
-        "display_name": contact["display_name"],
-        "contact_person": contact.get("contact_person"),
-        "address": contact.get("address", ""),
-        "email": contact.get("email"),
+        "display_name": contact.display_name,
+        "contact_person": contact.contact_person,
+        "address": contact.address,
+        "email": contact.email,
         "description": description,
         "service_date": item.service_date,
         "service_description": service_description,
@@ -189,7 +189,7 @@ async def resend_invoice(invoice_number: str, *, send_email: bool) -> ResendResu
         return ResendResult(pdf_bytes, invoice_number, "not_requested", None)
 
     contact = await get_contact(invoice["client_id"])
-    if contact is None or not contact.get("email"):
+    if contact is None or not contact.email:
         log.info(
             "resend.skipped_no_email",
             invoice_number=invoice_number,
@@ -204,11 +204,11 @@ async def resend_invoice(invoice_number: str, *, send_email: bool) -> ResendResu
 
     try:
         await send_invoice_email(
-            contact["email"],
+            contact.email,
             invoice_number,
             pdf_bytes,
-            contact.get("contact_person"),
-            contact["display_name"],
+            contact.contact_person,
+            contact.display_name,
             str(invoice["due_date"]),
         )
     except Exception as e:

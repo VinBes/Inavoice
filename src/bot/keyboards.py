@@ -25,3 +25,11 @@ def confirm_keyboard(has_email: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton("Edit", callback_data="edit"),
         InlineKeyboardButton("Cancel", callback_data="cancel"),
     ]])
+
+
+def contact_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Confirm/Cancel buttons for the /contacts add summary step."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Confirm", callback_data="contact_confirm"),
+        InlineKeyboardButton("Cancel", callback_data="contact_cancel"),
+    ]])

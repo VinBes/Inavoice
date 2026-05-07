@@ -14,6 +14,11 @@ from telegram.ext import (
 
 import config
 from config import ALLOWED_CHAT_IDS, TELEGRAM_BOT_TOKEN
+from bot.contact_flow import (
+    _execute_contact_confirm,
+    _start_contact_add,
+    handle_contact_add_message,
+)
 from bot.formatting import format_confirmation
 from bot.keyboards import confirm_keyboard
 from db.contacts import get_contact, list_contacts
@@ -75,6 +80,7 @@ _HELP_TEXT = (
     "Commands:\n"
     "  /start — greeting + known clients\n"
     "  /contacts — list known client IDs\n"
+    "  /contacts add — add a new client (guided)\n"
     "  /invoices — list the 10 most recent invoices\n"
     "  /resend <number> [email] — re-deliver a past invoice (Telegram only by default)\n"
     "  /cancel — cancel the current session\n"
@@ -98,7 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if contacts:
         lines.append("Known clients:")
         for c in contacts:
-            lines.append(f"  • {c['client_id']} → {c['display_name']}")
+            lines.append(f"  • {c.client_id} → {c.display_name}")
         lines.append("")
     lines.append("Type /help for the full command list.")
     await update.message.reply_text("\n".join(lines))
@@ -111,7 +117,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def contacts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _auth(update.effective_chat.id):
+    chat_id = update.effective_chat.id
+    if not _auth(chat_id):
+        return
+    args = context.args or []
+    if args == ["add"]:
+        await _start_contact_add(update, context, chat_id)
+        return
+    if args:
+        await update.message.reply_text(
+            "Usage: /contacts (list known clients) or /contacts add (guided setup)"
+        )
         return
     contacts = await list_contacts()
     if not contacts:
@@ -119,7 +135,7 @@ async def contacts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
     lines = ["Known clients:"]
     for c in contacts:
-        lines.append(f"  • {c['client_id']} → {c['display_name']}")
+        lines.append(f"  • {c.client_id} → {c.display_name}")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -241,6 +257,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     session.last_active = datetime.now(timezone.utc)
+
+    if session.mode == "add_contact":
+        await handle_contact_add_message(update, context, session, chat_id)
+        return
 
     contacts = await list_contacts()
     try:
@@ -426,6 +446,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text("Invoice cancelled.")
         log.info("session.cancelled", chat_id=chat_id)
 
+    elif cb == "contact_confirm":
+        if session is None or session.mode != "add_contact":
+            await query.answer("No contact setup in progress.", show_alert=True)
+            return
+        await query.answer()
+        await _execute_contact_confirm(query, session, chat_id, context)
+
+    elif cb == "contact_cancel":
+        await query.answer()
+        for job in context.job_queue.get_jobs_by_name(f"timeout_{chat_id}"):
+            job.schedule_removal()
+        _sessions.pop(chat_id, None)
+        await query.edit_message_text("Contact setup cancelled.")
+        log.info("contact_add.cancelled", chat_id=chat_id, source="button")
+
 
 def _fmt_amount(value) -> str:
     """Format a numeric amount (Decimal or string from PostgREST) for display.
@@ -445,7 +480,7 @@ def _fmt_amount(value) -> str:
 BOT_COMMANDS: list[BotCommand] = [
     BotCommand("start", "Show welcome message"),
     BotCommand("help", "How to dictate an invoice"),
-    BotCommand("contacts", "List saved contacts"),
+    BotCommand("contacts", "List saved contacts (or `/contacts add`)"),
     BotCommand("invoices", "List recent invoices"),
     BotCommand("resend", "Resend a recent invoice"),
     BotCommand("cancel", "Cancel the current draft"),

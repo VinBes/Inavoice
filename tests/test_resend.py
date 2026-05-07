@@ -12,6 +12,7 @@ import pytest
 
 import config
 from bot.handlers import resend_command
+from models.schemas import Contact
 from services.invoice_service import (
     InvoiceNotFoundError,
     ResendResult,
@@ -28,19 +29,21 @@ _INVOICE_ROW = {
     "pdf_storage_path": "2026/ZARAFFA26-3.pdf",
 }
 
-_CONTACT_WITH_EMAIL = {
-    "client_id": "client_a",
-    "display_name": "Client A Ltd.",
-    "contact_person": "Alice",
-    "email": "accounts@client-a.example.com",
-}
+_CONTACT_WITH_EMAIL = Contact(
+    client_id="client_a",
+    display_name="Client A Ltd.",
+    address="HK address",
+    contact_person="Alice",
+    email="accounts@client-a.example.com",
+)
 
-_CONTACT_NO_EMAIL = {
-    "client_id": "client_a",
-    "display_name": "Client A Ltd.",
-    "contact_person": None,
-    "email": None,
-}
+_CONTACT_NO_EMAIL = Contact(
+    client_id="client_a",
+    display_name="Client A Ltd.",
+    address="HK address",
+    contact_person=None,
+    email=None,
+)
 
 
 def _make_command_update(text="/resend"):
