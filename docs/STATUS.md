@@ -20,3 +20,4 @@ Track what has been built. Update checkboxes as modules are completed.
 - [x] `templates/invoice.html` — jinja2 invoice template (matches Vence reference design)
 - [x] `src/__main__.py` — entry point (run_polling)
 - [x] Docker / Railway deployment
+- [x] Polish batch 1: Claude retry, persistent daily cap, storage cleanup, `/healthz`, `/help` `/cancel` `/contacts`, improved `/start`, non-text fallback, dates on confirmation card

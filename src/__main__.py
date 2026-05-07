@@ -2,7 +2,9 @@ import logging
 
 import structlog
 
+import config
 from bot.handlers import build_application
+from health import start_health_server
 
 
 def configure_logging() -> None:
@@ -20,6 +22,7 @@ def configure_logging() -> None:
 
 def main() -> None:
     configure_logging()
+    start_health_server(config.HEALTH_PORT)
     app = build_application()
     app.run_polling()
 
