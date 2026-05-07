@@ -80,16 +80,27 @@ A Telegram bot that reduces invoicing to a single voice command with a confirmat
    ```
 
    Flat fee variant: drop the Time and Rate lines, show "Flat fee: {total} HKD" instead.
-7a. [Confirm] → claim invoice number → generate PDF → delivery:
-    - Client has email: inline keyboard [Email] [Download] [Both]
-    - Client has no email: skip question, send PDF via Telegram immediately
-    → Execute chosen delivery → store PDF + metadata → session COMPLETE
+
+   The Confirm row depends on whether the client has an email on file:
+   - Has email: `[Confirm + Email] [Confirm (Telegram)]` on row 1, `[Edit] [Cancel]` on row 2.
+   - No email: `[Confirm] [Edit] [Cancel]` on a single row.
+
+7a. Confirm tap (any variant) → claim invoice number → generate PDF → upload + save row →
+    deliver atomically in the same callback:
+    - `Confirm + Email`: send via Resend AND attach PDF to a Telegram message.
+    - `Confirm (Telegram)` / `Confirm` (no-email path): attach PDF to a Telegram message only.
+    PDF is always sent via Telegram. Email is opt-in. No second confirmation step.
+    Session COMPLETE on delivery; cleared from memory.
 7b. [Edit] → bot asks "What would you like to change?"
     → User sends correction (text)
     → LLM re-parses with previous data as context
     → Back to step 6 with updated fields
 7c. [Cancel] → session CANCELLED, user starts over
 ```
+
+Past invoices can be re-delivered with `/resend <invoice_number> [email]`. Default
+is Telegram-only; pass `email` to also re-send via Resend. The PDF is fetched from
+Supabase Storage; nothing is regenerated.
 
 ### Session Rules
 
@@ -101,9 +112,9 @@ A Telegram bot that reduces invoicing to a single voice command with a confirmat
 ### State Machine
 
 ```
-PENDING → CONFIRMED → GENERATING → COMPLETE
-   ↓         ↓
-CANCELLED  CANCELLED
+PENDING → GENERATING → COMPLETE
+   ↓
+CANCELLED
 ```
 
 - Duplicate Confirm callbacks are ignored; bot replies "Already processing your invoice"
@@ -152,12 +163,16 @@ CREATE TABLE invoices (
   pdf_storage_path TEXT NOT NULL,
   email_sent BOOLEAN NOT NULL DEFAULT FALSE,
   email_sent_at TIMESTAMPTZ,
+  last_resent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
 - `line_items` stores the full array as JSONB (future-proof for multi-line)
 - `subtotal` is the sum of all line item totals
+- `last_resent_at` is set whenever `/resend <number> email` successfully re-sends
+  the invoice via email. `email_sent_at` is left untouched so the original send
+  time is preserved.
 
 ### Invoice Counter Table
 

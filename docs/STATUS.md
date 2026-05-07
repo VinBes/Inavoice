@@ -21,3 +21,12 @@ Track what has been built. Update checkboxes as modules are completed.
 - [x] `src/__main__.py` — entry point (run_polling)
 - [x] Docker / Railway deployment
 - [x] Polish batch 1: Claude retry, persistent daily cap, storage cleanup, `/healthz`, `/help` `/cancel` `/contacts`, improved `/start`, non-text fallback, dates on confirmation card
+
+---
+
+## MVP Polish Batch 2 — pending
+
+- [x] **Move delivery choice before Confirm + add `/resend` and `/invoices`** — eliminates the post-Confirm RAM dependency on `pdf_bytes` (single-step pipeline) and provides a recovery path for past invoices. Closes the restart-during-active-use gap without persisting sessions. Includes a `/invoices` listing and `/resend <number>` to re-deliver from Supabase Storage.
+- [ ] **Guided `/contacts add` flow** — conversational onboarding so a new client can be added end-to-end from Telegram without SQL access. Reuses session state machine with a `mode` discriminator (`"invoice" | "add_contact"`).
+- [ ] **Resend webhook for delivery status** — `email.bounced` / `email.delivered` / `email.complained` events update the `invoices` row and notify via Telegram on failure. Extends the existing `/healthz` HTTP server.
+- [ ] **Pydantic-validate contact rows at the DB boundary** — introduce a `Contact` model, parse on read in `db/contacts.py` and on write in the `/contacts add` flow. Defense-in-depth; sequence alongside the guided contact-add flow so both paths share one schema.

@@ -8,6 +8,20 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-07 — Atomic Confirm + /invoices + /resend
+
+- **Confirm and delivery collapsed into one tap (spec §3 step 7 deviation).** The two-step flow (Confirm → choose Email/Telegram/Both) is now a single tap. New keyboard layout: contacts with email show `[Confirm + Email] [Confirm (Telegram)]` on row 1 and `[Edit] [Cancel]` on row 2; contacts without email show `[Confirm] [Edit] [Cancel]`. Reason: a Railway redeploy between Confirm and the delivery tap was burning the invoice number and stranding the PDF in storage with no recovery path. Collapsing the flow eliminates the in-memory `pdf_bytes` round-trip via `context.user_data` so a process restart cannot strand a partially delivered invoice. The "Both" option is dropped — `Confirm + Email` always also delivers the PDF via Telegram (matches the existing email-spec invariant). Spec §3 and email-spec §Delivery Rules updated.
+
+- **`/invoices` command added (not in spec).** Lists the 10 most recent invoices in compact one-line format (`number · date · client · subtotal HKD`). Read-only against Supabase. Spec ranking: lowest priority of MVP polish batch 2, but cheap and high daily-utility once /resend is shipped.
+
+- **`/resend <invoice_number> [email]` command added (not in spec).** Re-delivers a past invoice via Telegram by default; pass the literal `email` arg to also re-email through Resend. PDF bytes are fetched from Supabase Storage by `pdf_storage_path` — nothing is regenerated. Argument parsing rejects unknown second args explicitly. Email re-send to a contact that has been deleted or had its email removed degrades gracefully (PDF still delivered via Telegram, message names the missing client_id).
+
+- **`last_resent_at TIMESTAMPTZ` column added to `invoices` table.** Set whenever `/resend ... email` succeeds; `email_sent_at` is left untouched so the original send time is preserved. Migration applied via Supabase MCP `apply_migration` tool, name `add_last_resent_at_to_invoices`. `docs/deployment.md` schema updated with both the new column and an `ALTER TABLE … IF NOT EXISTS` for idempotent re-application.
+
+- **Spec state machine corrected.** `docs/spec.md` previously documented `PENDING → CONFIRMED → GENERATING → COMPLETE`, but the implementation never set `CONFIRMED` (dead state). The diagram now reads `PENDING → GENERATING → COMPLETE` to match the code. The unused `CONFIRMED` constant in `models/session.py` is left in place; removing it is more churn than value.
+
+- **`download_pdf` placement decision.** Storage I/O for past-invoice retrieval lives in `db/invoices.py` rather than `services/invoice_service.py` (where existing storage ops sit). Reason: `download_pdf` is a pure fetch, paired with `get_invoice` metadata, and colocation reads more naturally. Existing storage ops in `invoice_service.py` are orchestration-coupled (upload + DB-row insert) so they stay where they are.
+
 ## 2026-05-06 — MVP Polish Batch 1
 
 - **Claude API auto-retry implemented** in `services/llm_parser.py` per spec §7. Single retry after a 3-second delay on `anthropic.APIError`; second failure surfaces as `LLMAPIError`.

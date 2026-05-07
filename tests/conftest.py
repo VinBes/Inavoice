@@ -24,6 +24,7 @@ _DEFAULTS = {
     "BUSINESS_REGISTRATION": "TEST-BR-0001",
     "MOCK_MODE": "true",
     "TIMEZONE": "Asia/Hong_Kong",
+    "DEPLOY_ENV": "test",
 }
 
 for key, value in _DEFAULTS.items():

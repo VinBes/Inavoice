@@ -66,9 +66,15 @@ Zaraffa
 
 ## Delivery Rules
 
-1. Email is only sent when the user explicitly chooses "email" or "both" after confirming the invoice.
-2. If the client has no email address in the contacts database, the email option is not presented to the user. The bot only offers "Download here" (PDF via Telegram).
-3. The PDF is always sent back via Telegram regardless of whether email is also sent.
+1. Email is only sent when the user explicitly taps `Confirm + Email`. Tapping
+   `Confirm + Email` always also delivers the PDF via Telegram in the same
+   callback — there is no separate "Both" option.
+2. If the client has no email address in the contacts database, the email option
+   is not presented. The user sees a single `Confirm` button that delivers the
+   PDF via Telegram.
+3. The PDF is always sent back via Telegram regardless of whether email is also
+   sent. This invariant also applies to `/resend`: the PDF is always returned to
+   Telegram; the `email` flag is opt-in for re-emailing.
 
 ---
 

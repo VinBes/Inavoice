@@ -1,19 +1,44 @@
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Literal, Optional
 from zoneinfo import ZoneInfo
 
 import structlog
 
 import config
 from db.client import get_client
-from db.invoices import next_invoice_number, save_invoice
+from db.contacts import get_contact
+from db.invoices import (
+    download_pdf,
+    get_invoice,
+    next_invoice_number,
+    save_invoice,
+    update_last_resent_at,
+)
 from models.schemas import LLMOutput
+from services.email_sender import send_invoice_email
 from services.pdf_generator import generate_pdf
 
 log = structlog.get_logger()
 
 HKT = ZoneInfo(config.TIMEZONE)
+
+
+EmailStatus = Literal["not_requested", "sent", "skipped_no_email", "failed"]
+
+
+class InvoiceNotFoundError(Exception):
+    """Raised by resend_invoice when the invoice number is not in the DB."""
+
+
+@dataclass
+class ResendResult:
+    pdf_bytes: bytes
+    invoice_number: str
+    email_status: EmailStatus
+    email_status_message: Optional[str]
 
 
 def merge_and_compute(parsed: LLMOutput, contact: dict) -> dict:
@@ -140,3 +165,69 @@ async def create_invoice(data: dict) -> tuple[str, bytes]:
         client_id=data["client_id"],
     )
     return invoice_number, pdf_bytes
+
+
+async def resend_invoice(invoice_number: str, *, send_email: bool) -> ResendResult:
+    """Re-deliver an existing invoice. Telegram-only by default; opt in to re-email.
+
+    Raises InvoiceNotFoundError if the invoice_number does not exist.
+    Never raises on email failure or missing-email — those are reflected in
+    ResendResult.email_status so the caller can render a graceful response.
+    """
+    invoice = await get_invoice(invoice_number)
+    if invoice is None:
+        raise InvoiceNotFoundError(invoice_number)
+
+    pdf_bytes = await download_pdf(invoice["pdf_storage_path"])
+
+    if not send_email:
+        log.info(
+            "resend.telegram_only",
+            invoice_number=invoice_number,
+            client_id=invoice["client_id"],
+        )
+        return ResendResult(pdf_bytes, invoice_number, "not_requested", None)
+
+    contact = await get_contact(invoice["client_id"])
+    if contact is None or not contact.get("email"):
+        log.info(
+            "resend.skipped_no_email",
+            invoice_number=invoice_number,
+            client_id=invoice["client_id"],
+        )
+        return ResendResult(
+            pdf_bytes,
+            invoice_number,
+            "skipped_no_email",
+            f"Cannot re-email: contact {invoice['client_id']} has no email on file.",
+        )
+
+    try:
+        await send_invoice_email(
+            contact["email"],
+            invoice_number,
+            pdf_bytes,
+            contact.get("contact_person"),
+            contact["display_name"],
+            str(invoice["due_date"]),
+        )
+    except Exception as e:
+        log.error(
+            "resend.email_failed",
+            invoice_number=invoice_number,
+            error_type=type(e).__name__,
+        )
+        return ResendResult(
+            pdf_bytes,
+            invoice_number,
+            "failed",
+            "Email re-send failed. Sending PDF via Telegram only.",
+        )
+
+    await update_last_resent_at(invoice_number)
+    log.info(
+        "resend.emailed",
+        invoice_number=invoice_number,
+        client_id=invoice["client_id"],
+    )
+    return ResendResult(pdf_bytes, invoice_number, "sent", None)

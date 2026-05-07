@@ -35,3 +35,8 @@ SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 HEALTH_PORT = int(os.getenv("HEALTH_PORT", "8080"))
 
 MOCK_MODE = os.getenv("MOCK_MODE", "true").lower() == "true"
+
+# Deployment environment label, surfaced in /start and /help so the user can
+# tell at a glance which bot instance they're talking to (local docker compose
+# vs Railway). Free-form string; suggested values: "local", "prod".
+DEPLOY_ENV = os.getenv("DEPLOY_ENV", "local")
