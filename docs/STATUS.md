@@ -31,3 +31,10 @@ Track what has been built. Update checkboxes as modules are completed.
 - [x] **Resend webhook for delivery status** — `email.bounced` / `email.delivered` / `email.complained` events update the `invoices` row and notify via Telegram on failure. Extends the existing `/healthz` HTTP server.
 - [x] **Pydantic-validate contact rows at the DB boundary** — introduce a `Contact` model, parse on read in `db/contacts.py` and on write in the `/contacts add` flow. Defense-in-depth; sequence alongside the guided contact-add flow so both paths share one schema.
 - [x] **Guided `/contacts edit` and `/contacts delete` flows** — update or remove existing contacts from Telegram without SQL access. Reuses the same step machine as `/contacts add`.
+
+---
+
+## Open bugs
+
+- [ ] **`description` null crashes invoice creation** — when the LLM doesn't extract a `description` and the contact has no `default_description`, `merge_and_compute` returns `description=None` and `save_invoice` crashes on the NOT NULL constraint (Postgres `23502`). Observed 2026-05-08 with a freshly-added `bounce_test` contact during webhook smoke-testing. Fix: surface `description` (and `service_description`) in `LLMOutput.missing_fields` so the bot re-prompts before reaching the DB; add a defensive `ValueError` raise in `merge_and_compute` so the handler shows a friendly error if it ever slips through.
+- [ ] **Re-prompt loop wedges after user answers** — when the bot re-prompts for a missing field (e.g. `description`) and the user supplies the value, the next message is not advancing the session — the bot appears stuck and the user has to `/cancel`. Root cause unknown; suspect the correction-mode LLM call is not merging the new field into `parsed_data`, or the `missing_fields` check is re-triggering on the same field. Repro: dictate an invoice without a description for a contact that has no `default_description`; tap nothing; reply with the missing description as plain text. Expected: confirmation card. Actual: no reply, session timeout 30 min later.
