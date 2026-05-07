@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 import structlog
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -442,8 +442,27 @@ def _fmt_amount(value) -> str:
         return "?"
 
 
+BOT_COMMANDS: list[BotCommand] = [
+    BotCommand("start", "Show welcome message"),
+    BotCommand("help", "How to dictate an invoice"),
+    BotCommand("contacts", "List saved contacts"),
+    BotCommand("invoices", "List recent invoices"),
+    BotCommand("resend", "Resend a recent invoice"),
+    BotCommand("cancel", "Cancel the current draft"),
+]
+
+
+async def _register_commands(app: Application) -> None:
+    await app.bot.set_my_commands(BOT_COMMANDS)
+
+
 def build_application() -> Application:
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .post_init(_register_commands)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("contacts", contacts_command))
