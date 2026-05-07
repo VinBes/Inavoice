@@ -8,7 +8,7 @@ GENERATING = "GENERATING"
 COMPLETE = "COMPLETE"
 CANCELLED = "CANCELLED"
 
-SessionMode = Literal["invoice", "add_contact"]
+SessionMode = Literal["invoice", "add_contact", "edit_contact"]
 
 
 def _now() -> datetime:
@@ -27,3 +27,4 @@ class Session:
     invoice_number: Optional[str] = None
     message_id: Optional[int] = None
     contact_draft: Optional[dict] = None  # partial dict during /contacts add; validated to Contact at confirm
+    delete_target: Optional[str] = None   # client_id pending deletion; populated by /contacts delete, cleared on confirm/cancel

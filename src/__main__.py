@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import structlog
@@ -20,10 +21,19 @@ def configure_logging() -> None:
     )
 
 
+async def _start_health_with_loop(app) -> None:
+    """post_init hook: capture the running loop, then launch the HTTP server.
+
+    The webhook handler runs on a daemon thread, but the bot.send_message and
+    DB calls are async — we hop back onto this loop via run_coroutine_threadsafe.
+    """
+    loop = asyncio.get_running_loop()
+    start_health_server(config.HEALTH_PORT, bot=app.bot, loop=loop)
+
+
 def main() -> None:
     configure_logging()
-    start_health_server(config.HEALTH_PORT)
-    app = build_application()
+    app = build_application(extra_post_init=_start_health_with_loop)
     app.run_polling()
 
 

@@ -15,14 +15,18 @@ async def send_invoice_email(
     contact_person: str | None,
     display_name: str,
     due_date: str,
-) -> None:
-    """Send invoice PDF via Resend. In MOCK_MODE logs to stdout instead."""
+) -> str | None:
+    """Send invoice PDF via Resend. In MOCK_MODE logs to stdout instead.
+
+    Returns the Resend message id on success (None in MOCK_MODE). The id is
+    persisted on the invoices row so webhook events can find the right invoice.
+    """
     if config.MOCK_MODE:
         print(
             f"[MOCK EMAIL] Invoice {invoice_number} — {config.SENDER_NAME} | Due: {due_date}"
         )
         log.info("email_sender.mock", invoice_number=invoice_number)
-        return
+        return None
 
     greeting = contact_person or display_name
     body = (
@@ -32,9 +36,9 @@ async def send_invoice_email(
         f"Kind regards,\n{config.SENDER_NAME}\nZaraffa"
     )
 
-    def _sync() -> None:
+    def _sync() -> dict:
         resend.api_key = config.RESEND_API_KEY
-        resend.Emails.send({
+        return resend.Emails.send({
             "from": config.EMAIL_FROM_ADDRESS,
             "to": [to],
             "subject": f"Invoice {invoice_number} — {config.SENDER_NAME}",
@@ -46,5 +50,9 @@ async def send_invoice_email(
             }],
         })
 
-    await asyncio.to_thread(_sync)
-    log.info("email_sender.sent", invoice_number=invoice_number)
+    response = await asyncio.to_thread(_sync)
+    email_id = (response or {}).get("id")
+    log.info(
+        "email_sender.sent", invoice_number=invoice_number, email_id=email_id
+    )
+    return email_id

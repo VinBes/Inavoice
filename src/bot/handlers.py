@@ -16,13 +16,20 @@ import config
 from config import ALLOWED_CHAT_IDS, TELEGRAM_BOT_TOKEN
 from bot.contact_flow import (
     _execute_contact_confirm,
+    _execute_contact_delete_cancel,
+    _execute_contact_delete_confirm,
+    _execute_contact_edit_done,
+    _execute_contact_edit_field_pick,
     _start_contact_add,
+    _start_contact_delete,
+    _start_contact_edit,
     handle_contact_add_message,
+    handle_contact_edit_message,
 )
 from bot.formatting import format_confirmation
 from bot.keyboards import confirm_keyboard
 from db.contacts import get_contact, list_contacts
-from db.invoices import list_recent_invoices
+from db.invoices import list_recent_invoices, update_email_id
 from models.session import CANCELLED, COMPLETE, CONFIRMED, GENERATING, PENDING, Session
 from services.email_sender import send_invoice_email
 from services.invoice_service import (
@@ -81,6 +88,8 @@ _HELP_TEXT = (
     "  /start — greeting + known clients\n"
     "  /contacts — list known client IDs\n"
     "  /contacts add — add a new client (guided)\n"
+    "  /contacts edit <client_id> — edit fields on an existing client (guided)\n"
+    "  /contacts delete <client_id> — delete a client (refused if invoices reference it)\n"
     "  /invoices — list the 10 most recent invoices\n"
     "  /resend <number> [email] — re-deliver a past invoice (Telegram only by default)\n"
     "  /cancel — cancel the current session\n"
@@ -124,9 +133,26 @@ async def contacts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if args == ["add"]:
         await _start_contact_add(update, context, chat_id)
         return
+    if args == ["edit"]:
+        await update.message.reply_text(
+            "Usage: /contacts edit <client_id>"
+        )
+        return
+    if args == ["delete"]:
+        await update.message.reply_text(
+            "Usage: /contacts delete <client_id>"
+        )
+        return
+    if len(args) == 2 and args[0] == "edit":
+        await _start_contact_edit(update, context, chat_id, args[1])
+        return
+    if len(args) == 2 and args[0] == "delete":
+        await _start_contact_delete(update, context, chat_id, args[1])
+        return
     if args:
         await update.message.reply_text(
-            "Usage: /contacts (list known clients) or /contacts add (guided setup)"
+            "Usage: /contacts (list known clients), /contacts add (guided setup), "
+            "/contacts edit <client_id>, or /contacts delete <client_id>"
         )
         return
     contacts = await list_contacts()
@@ -262,6 +288,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_contact_add_message(update, context, session, chat_id)
         return
 
+    if session.mode == "edit_contact":
+        await handle_contact_edit_message(update, context, session, chat_id)
+        return
+
     contacts = await list_contacts()
     try:
         result = await parse_invoice_text(
@@ -371,7 +401,7 @@ async def _execute_confirm(
     if send_email:
         email = computed.get("email")
         try:
-            await send_invoice_email(
+            email_id = await send_invoice_email(
                 email,
                 invoice_number,
                 pdf_bytes,
@@ -379,6 +409,17 @@ async def _execute_confirm(
                 computed.get("display_name", ""),
                 str(computed.get("due_date", "")),
             )
+            if email_id:
+                # Best-effort: a failure to persist the id only means future
+                # webhook events for this invoice can't be matched. The email
+                # itself is already sent, so don't surface this to the user.
+                try:
+                    await update_email_id(invoice_number, email_id)
+                except Exception:
+                    log.exception(
+                        "email_id.persist_failed",
+                        invoice_number=invoice_number,
+                    )
             await query.edit_message_text(
                 f"Invoice {invoice_number} ready. Emailed and sending PDF here…"
             )
@@ -461,6 +502,38 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text("Contact setup cancelled.")
         log.info("contact_add.cancelled", chat_id=chat_id, source="button")
 
+    elif cb.startswith("contact_edit_field:"):
+        if session is None or session.mode != "edit_contact":
+            await query.answer("No contact edit in progress.", show_alert=True)
+            return
+        await query.answer()
+        field = cb.split(":", 1)[1]
+        await _execute_contact_edit_field_pick(query, session, chat_id, context, field)
+
+    elif cb == "contact_edit_done":
+        if session is None or session.mode != "edit_contact":
+            await query.answer("No contact edit in progress.", show_alert=True)
+            return
+        await query.answer()
+        await _execute_contact_edit_done(query, session, chat_id, context)
+
+    elif cb.startswith("contact_delete_confirm:"):
+        if session is None or session.delete_target is None:
+            await query.answer("No contact deletion in progress.", show_alert=True)
+            return
+        await query.answer()
+        client_id = cb.split(":", 1)[1]
+        await _execute_contact_delete_confirm(
+            query, session, chat_id, context, client_id
+        )
+
+    elif cb == "contact_delete_cancel":
+        if session is None or session.delete_target is None:
+            await query.answer()
+            return
+        await query.answer()
+        await _execute_contact_delete_cancel(query, session, chat_id, context)
+
 
 def _fmt_amount(value) -> str:
     """Format a numeric amount (Decimal or string from PostgREST) for display.
@@ -480,7 +553,10 @@ def _fmt_amount(value) -> str:
 BOT_COMMANDS: list[BotCommand] = [
     BotCommand("start", "Show welcome message"),
     BotCommand("help", "How to dictate an invoice"),
-    BotCommand("contacts", "List saved contacts (or `/contacts add`)"),
+    BotCommand(
+        "contacts",
+        "List contacts (or `/contacts add` / `edit <id>` / `delete <id>`)",
+    ),
     BotCommand("invoices", "List recent invoices"),
     BotCommand("resend", "Resend a recent invoice"),
     BotCommand("cancel", "Cancel the current draft"),
@@ -491,11 +567,24 @@ async def _register_commands(app: Application) -> None:
     await app.bot.set_my_commands(BOT_COMMANDS)
 
 
-def build_application() -> Application:
+def build_application(extra_post_init=None) -> Application:
+    """Build the Telegram Application.
+
+    ``extra_post_init`` is an optional async callable run after the standard
+    `_register_commands` post_init. ``__main__`` uses it to start the health /
+    webhook HTTP server from inside the running asyncio loop, so the webhook
+    handler can call back into PTB safely via ``run_coroutine_threadsafe``.
+    """
+
+    async def _post_init(app: Application) -> None:
+        await _register_commands(app)
+        if extra_post_init is not None:
+            await extra_post_init(app)
+
     app = (
         Application.builder()
         .token(TELEGRAM_BOT_TOKEN)
-        .post_init(_register_commands)
+        .post_init(_post_init)
         .build()
     )
     app.add_handler(CommandHandler("start", start))

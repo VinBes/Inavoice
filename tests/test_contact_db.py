@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from db.contacts import get_contact, list_contacts, upsert_contact
+from db.contacts import delete_contact, get_contact, list_contacts, upsert_contact
 from models.schemas import Contact
 
 
@@ -101,3 +101,19 @@ async def test_upsert_contact_serializes_to_json_dict():
     assert isinstance(payload["default_rate"], str)
     assert Decimal(payload["default_rate"]) == Decimal("750")
     assert kwargs.get("on_conflict") == "client_id"
+
+
+async def test_delete_contact_invokes_delete_eq():
+    """Verify the supabase chain `.table('contacts').delete().eq('client_id', X).execute()`."""
+    client = MagicMock()
+    delete_chain = client.table.return_value.delete
+    eq_chain = delete_chain.return_value.eq
+    eq_chain.return_value.execute.return_value = MagicMock()
+
+    with patch("db.contacts.get_client", return_value=client):
+        await delete_contact("client_a")
+
+    client.table.assert_called_with("contacts")
+    delete_chain.assert_called_once_with()
+    eq_chain.assert_called_once_with("client_id", "client_a")
+    eq_chain.return_value.execute.assert_called_once_with()

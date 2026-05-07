@@ -117,3 +117,73 @@ async def test_4_3_email_failure_still_sends_pdf():
     assert "Email failed" in last_edit
     # Session was cleared (collapsed flow always ends at delivery)
     assert _CHAT_ID not in _sessions
+
+
+# ---------------------------------------------------------------------------
+# email_id capture: send_invoice_email returns the Resend message id, and the
+# confirm pipeline persists it via update_email_id so webhooks can find the
+# invoice later.
+# ---------------------------------------------------------------------------
+
+
+async def test_send_invoice_email_returns_id_in_prod_mode(monkeypatch):
+    from services import email_sender
+
+    monkeypatch.setattr(config, "MOCK_MODE", False)
+
+    fake_resp = {"id": "abc123"}
+    with patch.object(
+        email_sender.resend.Emails, "send", return_value=fake_resp
+    ) as mock_send:
+        result = await email_sender.send_invoice_email(
+            "to@example.com",
+            "ZARAFFA26-1",
+            b"%PDF",
+            "Alice",
+            "Client A Ltd.",
+            "9 April 2026",
+        )
+
+    assert result == "abc123"
+    mock_send.assert_called_once()
+
+
+async def test_send_invoice_email_returns_none_in_mock_mode():
+    from services.email_sender import send_invoice_email
+
+    # MOCK_MODE is True in conftest.
+    result = await send_invoice_email(
+        "to@example.com",
+        "ZARAFFA26-1",
+        b"%PDF",
+        None,
+        "Client A Ltd.",
+        "9 April 2026",
+    )
+    assert result is None
+
+
+async def test_execute_confirm_persists_email_id():
+    """The confirm pipeline must call update_email_id with the id returned by
+    send_invoice_email, so a later Resend webhook can match the row."""
+    _sessions.clear()
+    _sessions[_CHAT_ID] = _pending_session()
+
+    update, query = _make_callback("confirm_email")
+    ctx = MagicMock()
+    ctx.user_data = {}
+    # job_queue.get_jobs_by_name() is iterated for cleanup; an empty list is fine.
+    ctx.job_queue.get_jobs_by_name.return_value = []
+
+    with (
+        patch("bot.handlers.create_invoice", return_value=("ZARAFFA26-1", b"%PDF")),
+        patch(
+            "bot.handlers.send_invoice_email",
+            AsyncMock(return_value="abc123"),
+        ),
+        patch("bot.handlers.update_email_id", AsyncMock()) as mock_update,
+    ):
+        await handle_callback(update, ctx)
+
+    mock_update.assert_awaited_once_with("ZARAFFA26-1", "abc123")
+    assert _CHAT_ID not in _sessions

@@ -30,3 +30,13 @@ async def upsert_contact(contact: Contact) -> None:
         get_client().table("contacts").upsert(payload, on_conflict="client_id").execute()
 
     await asyncio.to_thread(_sync)
+
+
+async def delete_contact(client_id: str) -> None:
+    """Hard-delete a contact row. Caller must verify no invoices reference it
+    (FK is the safety net but the pre-check gives a friendlier error)."""
+
+    def _sync():
+        get_client().table("contacts").delete().eq("client_id", client_id).execute()
+
+    await asyncio.to_thread(_sync)
