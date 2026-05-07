@@ -134,6 +134,7 @@ ANTHROPIC_API_KEY=
 
 # === Resend (Email) ===
 RESEND_API_KEY=
+RESEND_WEBHOOK_SECRET=  # required; matches the secret shown in the Resend webhook dashboard for /webhooks/resend
 EMAIL_FROM_ADDRESS=invoice@zaraffa.online
 
 # === Supabase ===
@@ -232,6 +233,26 @@ suppressed so the runtime version is not advertised. The endpoint is not
 publicly reachable unless you explicitly add a public domain to the Railway
 service.
 
+### Resend Delivery Webhook
+
+The same listener also serves `POST /webhooks/resend` for Resend delivery
+events. To enable in production:
+
+1. Set `RESEND_WEBHOOK_SECRET` in Railway env vars to the secret shown in
+   the Resend dashboard webhook configuration.
+2. Add a public domain to the Railway service (this also exposes
+   `/healthz` — body returns no sensitive info, accepted).
+3. In the Resend dashboard, configure the endpoint URL
+   `https://<railway-domain>/webhooks/resend` and subscribe to
+   `email.delivered`, `email.bounced`, `email.complained`.
+
+Bodies are signed with the Svix scheme (`svix-id` / `svix-timestamp` /
+`svix-signature` headers) and verified on every request. `MOCK_MODE=true`
+skips signature verification for local development. Unknown event types and
+unmatched `email_id`s are silently 200-acked so Resend retries don't flap on
+schema drift. See `docs/email-spec.md` for full event handling and the
+multi-user TODO.
+
 ---
 
 ## Pause / Resume
@@ -309,6 +330,13 @@ CREATE TABLE invoices (
 -- Migration for existing deployments (the column was added after the initial
 -- schema). Safe to run multiple times — IF NOT EXISTS skips when present.
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS last_resent_at TIMESTAMPTZ;
+
+-- Resend delivery-status tracking (added 2026-05-08). Migration name:
+-- add_email_delivery_columns_to_invoices. Idempotent.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS email_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS email_delivery_status TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS email_delivery_event_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS invoices_email_id_idx ON invoices(email_id);
 
 -- Persistent daily Claude API call counter (survives container restarts)
 CREATE TABLE claude_daily_usage (

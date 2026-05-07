@@ -11,6 +11,7 @@ _DEFAULTS = {
     "ALLOWED_CHAT_IDS": "123456789",
     "ANTHROPIC_API_KEY": "test-anthropic-key",
     "RESEND_API_KEY": "test-resend-key",
+    "RESEND_WEBHOOK_SECRET": "whsec_dGVzdHNlY3JldA==",  # base64("testsecret")
     "EMAIL_FROM_ADDRESS": "invoice@zaraffa.online",
     "SUPABASE_URL": "https://test.supabase.co",
     "SUPABASE_SERVICE_KEY": "test-service-key",

@@ -8,6 +8,51 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-08 — Resend delivery webhook + /contacts edit & delete
+
+- **Resend webhook receiver added (`/webhooks/resend`)**, extending the existing
+  `/healthz` stdlib HTTP server (`src/health.py`). Subscribes to
+  `email.delivered`, `email.bounced`, `email.complained`. Verifies Svix
+  signatures via the `svix` Python package. The webhook handler runs in the
+  health server's daemon thread and dispatches async DB / Telegram calls back
+  to the bot's asyncio loop via `asyncio.run_coroutine_threadsafe`. The HTTP
+  thread → asyncio bridge is set up from an `Application.post_init` hook that
+  captures the running loop. `build_application(extra_post_init=...)` chains
+  the existing command-registration hook with the new one.
+- **`MOCK_MODE` skips webhook signature verification** so local dev / tests
+  can hit the endpoint with `curl` without forging Svix signatures. Production
+  always verifies.
+- **`RESEND_WEBHOOK_SECRET` is required at startup** (raises if missing,
+  matching `TELEGRAM_BOT_TOKEN`). Documented in `docs/deployment.md`.
+- **Three new columns on `invoices`** (`email_id`, `email_delivery_status`,
+  `email_delivery_event_at`) plus index `invoices_email_id_idx`. Migration
+  `add_email_delivery_columns_to_invoices` is idempotent (`ADD COLUMN IF NOT
+  EXISTS`). `email_sender.py` now returns the Resend message id and
+  `_execute_confirm` persists it via the new `update_email_id` so the webhook
+  can find the invoice. **Pre-existing invoices without `email_id` are
+  unmatched** if their delivery events arrive — by design (acceptable for the
+  small invoice volume).
+- **Bounce / complaint events broadcast a Telegram alert to every chat in
+  `ALLOWED_CHAT_IDS`.** Idempotency: only broadcast if the persisted
+  `email_delivery_status` differs from the new one (Resend retries
+  duplicates). **Multi-user TODO** in `docs/email-spec.md` — when more than
+  one chat is allowed, store `sent_by_chat_id` on the invoice row and route
+  alerts to that chat instead of broadcasting.
+- **Guided `/contacts edit <client_id>` flow** (`bot/contact_flow.py`).
+  Inline keyboard with one button per editable field plus Done; tapping a
+  field prompts with the current value, validates via the same `_STEPS`
+  validators as `add`, and `upsert_contact`s on success. The contact is
+  re-read each cycle so the picker always shows the persisted state.
+  `client_id` is NOT editable (PK — user must delete and re-add to rename).
+  New session mode `"edit_contact"`.
+- **Guided `/contacts delete <client_id>` flow** (`bot/contact_flow.py`).
+  No new session mode — uses transient `Session.delete_target`. Pre-checks
+  `count_invoices_for_contact`; refuses with a friendly message naming the
+  count if any invoices reference the contact (the FK constraint is the
+  safety net but the pre-check gives a friendlier error). Re-checks the count
+  at confirm time (TOCTOU defense). Stale callback whose embedded client_id
+  doesn't match `session.delete_target` is silently ignored.
+
 ## 2026-05-07 — Contact model + guided /contacts add
 
 - **`Contact` Pydantic model added (`models/schemas.py`).** Validates `client_id`

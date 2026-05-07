@@ -9,6 +9,7 @@ ALLOWED_CHAT_IDS = [int(x) for x in os.getenv("ALLOWED_CHAT_IDS", "").split(",")
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 
 RESEND_API_KEY = os.environ["RESEND_API_KEY"]
+RESEND_WEBHOOK_SECRET = os.environ["RESEND_WEBHOOK_SECRET"]
 EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", "invoice@zaraffa.online")
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]

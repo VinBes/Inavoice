@@ -1,8 +1,8 @@
 import re
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
@@ -73,3 +73,55 @@ class Contact(BaseModel):
         if v is not None and v <= 0:
             raise ValueError("default_rate must be positive")
         return v
+
+
+# Resend webhook payloads. Only the fields the bot uses are typed; extras are
+# preserved (`extra="allow"`) so we don't break on new fields Resend adds later.
+class _ResendBounceDetails(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    message: Optional[str] = None
+    subType: Optional[str] = None  # "Suppressed", "MessageRejected", etc.
+    type: Optional[str] = None     # "Permanent" or "Temporary"
+
+
+class ResendDeliveredData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    email_id: str
+
+
+class ResendBouncedData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    email_id: str
+    bounce: Optional[_ResendBounceDetails] = None
+
+
+class ResendComplainedData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    email_id: str
+
+
+class ResendDeliveredEvent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["email.delivered"]
+    created_at: Optional[str] = None
+    data: ResendDeliveredData
+
+
+class ResendBouncedEvent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["email.bounced"]
+    created_at: Optional[str] = None
+    data: ResendBouncedData
+
+
+class ResendComplainedEvent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["email.complained"]
+    created_at: Optional[str] = None
+    data: ResendComplainedData
+
+
+ResendWebhookEvent = Annotated[
+    Union[ResendDeliveredEvent, ResendBouncedEvent, ResendComplainedEvent],
+    Field(discriminator="type"),
+]

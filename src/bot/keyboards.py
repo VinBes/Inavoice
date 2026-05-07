@@ -33,3 +33,50 @@ def contact_confirm_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton("Confirm", callback_data="contact_confirm"),
         InlineKeyboardButton("Cancel", callback_data="contact_cancel"),
     ]])
+
+
+def contact_delete_confirm_keyboard(client_id: str) -> InlineKeyboardMarkup:
+    """Confirm/Cancel buttons for /contacts delete. The client_id is embedded
+    in the Delete callback data so the handler can verify against the session
+    target (stale callbacks are ignored)."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Delete", callback_data=f"contact_delete_confirm:{client_id}"),
+        InlineKeyboardButton("Cancel", callback_data="contact_delete_cancel"),
+    ]])
+
+
+def contact_field_picker_keyboard() -> InlineKeyboardMarkup:
+    """Field picker for /contacts edit. One button per editable field, plus Done.
+
+    `client_id` is intentionally omitted — it's the primary key. To rename a
+    contact, the user must delete and re-add. The email button is always shown
+    so the user can ADD an email if one is missing.
+    """
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Display name", callback_data="contact_edit_field:display_name"),
+            InlineKeyboardButton("Address", callback_data="contact_edit_field:address"),
+        ],
+        [
+            InlineKeyboardButton("Contact person", callback_data="contact_edit_field:contact_person"),
+            InlineKeyboardButton("Email", callback_data="contact_edit_field:email"),
+        ],
+        [
+            InlineKeyboardButton(
+                "Default description",
+                callback_data="contact_edit_field:default_description",
+            ),
+            InlineKeyboardButton(
+                "Default service",
+                callback_data="contact_edit_field:default_service_description",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "Default rate", callback_data="contact_edit_field:default_rate"
+            ),
+        ],
+        [
+            InlineKeyboardButton("Done", callback_data="contact_edit_done"),
+        ],
+    ])

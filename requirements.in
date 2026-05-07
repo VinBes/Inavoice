@@ -4,6 +4,7 @@ weasyprint
 jinja2
 supabase
 resend
+svix
 pydantic>=2.0
 structlog
 python-dotenv
