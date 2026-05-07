@@ -165,6 +165,7 @@ MONTHLY_COST_ALERT_THRESHOLD=5
 # === App Config ===
 TIMEZONE=Asia/Hong_Kong
 SESSION_TIMEOUT_MINUTES=30
+HEALTH_PORT=8080
 
 # === Development ===
 MOCK_MODE=true
@@ -222,7 +223,14 @@ CMD ["python", "-m", "src"]
 
 ### Health Check
 
-The Telegram bot runs in polling mode — no HTTP server needed. Railway doesn't require a health check endpoint for worker processes. Configure the Railway service as a "Worker" type (not "Web") so it doesn't expect an HTTP port.
+The bot exposes a tiny stdlib HTTP listener on `HEALTH_PORT` (default `8080`)
+alongside the polling loop. `GET /healthz` returns `200 OK` with
+`{"status": "ok"}` so Railway / external uptime probes can detect a wedged
+container. The listener runs in a daemon thread; it does not affect Telegram
+polling. Body contains no internal state and the `Server:` header is
+suppressed so the runtime version is not advertised. The endpoint is not
+publicly reachable unless you explicitly add a public domain to the Railway
+service.
 
 ---
 
@@ -296,6 +304,24 @@ CREATE TABLE invoices (
   email_sent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Persistent daily Claude API call counter (survives container restarts)
+CREATE TABLE claude_daily_usage (
+  usage_date DATE PRIMARY KEY,
+  calls INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE OR REPLACE FUNCTION increment_claude_daily_calls(p_date DATE)
+RETURNS INTEGER
+LANGUAGE sql
+AS $$
+  INSERT INTO claude_daily_usage (usage_date, calls, updated_at)
+  VALUES (p_date, 1, NOW())
+  ON CONFLICT (usage_date)
+  DO UPDATE SET calls = claude_daily_usage.calls + 1, updated_at = NOW()
+  RETURNING calls;
+$$;
 ```
 
 ### Invoice Number Upsert

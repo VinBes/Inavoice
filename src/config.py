@@ -32,4 +32,6 @@ MONTHLY_COST_ALERT_THRESHOLD = float(os.getenv("MONTHLY_COST_ALERT_THRESHOLD", "
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Hong_Kong")
 SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 
+HEALTH_PORT = int(os.getenv("HEALTH_PORT", "8080"))
+
 MOCK_MODE = os.getenv("MOCK_MODE", "true").lower() == "true"

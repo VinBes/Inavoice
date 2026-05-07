@@ -99,25 +99,40 @@ async def create_invoice(data: dict) -> tuple[str, bytes]:
 
     await asyncio.to_thread(_upload)
 
-    await save_invoice({
-        "invoice_number": invoice_number,
-        "client_id": data["client_id"],
-        "invoice_date": str(data["invoice_date"]),
-        "due_date": str(data["due_date"]),
-        "description": data["description"],
-        "line_items": [{
-            "service_date": data["service_date"],
-            "service_description": data["service_description"],
-            "time_start": data.get("time_start"),
-            "time_end": data.get("time_end"),
-            "rate": str(data["rate"]),
-            "rate_type": data["rate_type"],
-            "total": str(data["total"]),
-        }],
-        "subtotal": str(data["total"]),
-        "pdf_storage_path": storage_path,
-        "email_sent": False,
-    })
+    try:
+        await save_invoice({
+            "invoice_number": invoice_number,
+            "client_id": data["client_id"],
+            "invoice_date": str(data["invoice_date"]),
+            "due_date": str(data["due_date"]),
+            "description": data["description"],
+            "line_items": [{
+                "service_date": data["service_date"],
+                "service_description": data["service_description"],
+                "time_start": data.get("time_start"),
+                "time_end": data.get("time_end"),
+                "rate": str(data["rate"]),
+                "rate_type": data["rate_type"],
+                "total": str(data["total"]),
+            }],
+            "subtotal": str(data["total"]),
+            "pdf_storage_path": storage_path,
+            "email_sent": False,
+        })
+    except Exception:
+        # DB row failed: remove the orphaned PDF so storage doesn't accumulate
+        # files with no matching invoice record. Invoice number stays burned.
+        log.exception("invoice_service.save_failed", invoice_number=invoice_number)
+        try:
+            await asyncio.to_thread(
+                lambda: get_client().storage.from_("invoices").remove([storage_path])
+            )
+            log.info("invoice_service.storage_cleanup", storage_path=storage_path)
+        except Exception:
+            log.exception(
+                "invoice_service.storage_cleanup_failed", storage_path=storage_path
+            )
+        raise
 
     log.info(
         "invoice_service.created",

@@ -58,10 +58,85 @@ async def _timeout_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
         log.info("session.timeout", chat_id=chat_id)
 
 
+_HELP_TEXT = (
+    "Inavoice — voice-to-invoice bot.\n\n"
+    "Send an invoice description as text (dictate via Wispr Flow on device "
+    "for voice input). I'll parse it, show a preview, and generate the PDF "
+    "after you confirm.\n\n"
+    "Example:\n"
+    "  \"Invoice for aesthetic_radio for tonight 22:00 to 02:00 at 500 per hour\"\n\n"
+    "Commands:\n"
+    "  /start — greeting + known clients\n"
+    "  /contacts — list known client IDs\n"
+    "  /cancel — cancel the current session\n"
+    "  /help — show this message"
+)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _auth(update.effective_chat.id):
         return
-    await update.message.reply_text("Inavoice ready. Send me an invoice description.")
+    contacts = await list_contacts()
+    lines = [
+        "👋 Inavoice ready.",
+        "",
+        "Dictate or type an invoice description and I'll handle the rest.",
+        "",
+        "Example:",
+        '  "Invoice for {client} for tonight 22:00 to 02:00 at 500 per hour"',
+        "",
+    ]
+    if contacts:
+        lines.append("Known clients:")
+        for c in contacts:
+            lines.append(f"  • {c['client_id']} → {c['display_name']}")
+        lines.append("")
+    lines.append("Type /help for the full command list.")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _auth(update.effective_chat.id):
+        return
+    await update.message.reply_text(_HELP_TEXT)
+
+
+async def contacts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _auth(update.effective_chat.id):
+        return
+    contacts = await list_contacts()
+    if not contacts:
+        await update.message.reply_text("No contacts found.")
+        return
+    lines = ["Known clients:"]
+    for c in contacts:
+        lines.append(f"  • {c['client_id']} → {c['display_name']}")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    if not _auth(chat_id):
+        return
+    for job in context.job_queue.get_jobs_by_name(f"timeout_{chat_id}"):
+        job.schedule_removal()
+    had_session = _sessions.pop(chat_id, None) is not None
+    if had_session:
+        await update.message.reply_text("Invoice cancelled. Send a new description to start over.")
+        log.info("session.cancelled", chat_id=chat_id, source="command")
+    else:
+        await update.message.reply_text("No active invoice session.")
+
+
+async def handle_unsupported(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reply when the user sends a non-text message (voice, photo, document, etc.)."""
+    if not _auth(update.effective_chat.id):
+        return
+    await update.message.reply_text(
+        "I can only process text right now. Voice transcription is not supported "
+        "on the server — dictate via Wispr Flow on your device, then send the "
+        "transcribed text. Type /help for examples."
+    )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -256,6 +331,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def build_application() -> Application:
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("contacts", contacts_command))
+    app.add_handler(CommandHandler("cancel", cancel_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(~filters.TEXT & ~filters.COMMAND, handle_unsupported))
     app.add_handler(CallbackQueryHandler(handle_callback))
     return app

@@ -16,6 +16,10 @@ from services.llm_parser import (
 )
 
 
+async def _noop_sleep(_seconds: float) -> None:
+    return None
+
+
 def _reset_daily():
     llm_parser._daily_calls = 0
     llm_parser._daily_reset_date = date.today()
@@ -91,6 +95,10 @@ async def test_5_2_session_cap_at_boundary():
 async def test_anthropic_api_error_becomes_llm_api_error(monkeypatch):
     _reset_daily()
     monkeypatch.setattr(config, "MOCK_MODE", False)
+    # DB-backed counter in non-mock mode — stub the RPC wrapper.
+    monkeypatch.setattr(llm_parser, "increment_claude_daily_calls", AsyncMock(return_value=1))
+    # Don't actually sleep between retry attempts.
+    monkeypatch.setattr(llm_parser.asyncio, "sleep", _noop_sleep)
 
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     response = httpx.Response(
@@ -109,4 +117,32 @@ async def test_anthropic_api_error_becomes_llm_api_error(monkeypatch):
     with pytest.raises(LLMAPIError):
         await parse_invoice_text("invoice for client a", contacts=[], session_call_count=0)
 
+    # Spec §7: auto-retry once, so the underlying API should be called twice
+    # before the error is surfaced as LLMAPIError.
+    assert fake_client.messages.create.await_count == 2
+    _reset_daily()
+
+
+async def test_anthropic_api_retry_succeeds_on_second_attempt(monkeypatch):
+    """First call raises a transient APIError, retry succeeds — no LLMAPIError surfaces."""
+    _reset_daily()
+    monkeypatch.setattr(config, "MOCK_MODE", False)
+    monkeypatch.setattr(llm_parser, "increment_claude_daily_calls", AsyncMock(return_value=1))
+    monkeypatch.setattr(llm_parser.asyncio, "sleep", _noop_sleep)
+
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    transient = anthropic.APIConnectionError(request=request)
+
+    success_response = AsyncMock()
+    success_response.content = [type("Block", (), {"text": '{"client_id": "client_a", "description": null, "line_items": [{"service_date": "01/05/2026", "service_description": null, "time_start": null, "time_end": null, "rate": 500, "rate_type": "flat", "total": null}], "missing_fields": []}'})()]
+
+    fake_client = AsyncMock()
+    fake_client.messages.create.side_effect = [transient, success_response]
+    monkeypatch.setattr(llm_parser, "_get_client", lambda: fake_client)
+
+    result = await parse_invoice_text(
+        "invoice for client a", contacts=[], session_call_count=0
+    )
+    assert result.client_id == "client_a"
+    assert fake_client.messages.create.await_count == 2
     _reset_daily()

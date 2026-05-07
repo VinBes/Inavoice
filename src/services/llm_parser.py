@@ -1,3 +1,4 @@
+import asyncio
 import json
 import pathlib
 from datetime import date
@@ -7,6 +8,7 @@ import anthropic
 import structlog
 
 import config
+from db.api_usage import increment_claude_daily_calls
 from models.schemas import LLMOutput
 
 log = structlog.get_logger()
@@ -16,6 +18,7 @@ HKT = ZoneInfo(config.TIMEZONE)
 FIXTURES_DIR = pathlib.Path(__file__).parent.parent.parent / "tests" / "fixtures" / "claude_responses"
 
 _MODEL = "claude-haiku-4-5-20251001"
+_RETRY_DELAY_SECONDS = 3
 
 _JSON_SCHEMA = """{
   "client_id": "string | null",
@@ -67,14 +70,30 @@ def _get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-def _check_and_increment_daily(today: date) -> None:
+async def _check_and_increment_daily(today: date) -> None:
+    """Atomically increment the daily Claude call counter and enforce the cap.
+
+    In MOCK_MODE this uses an in-memory counter so tests and local dev don't
+    require a live database. In production it goes through the Supabase RPC
+    so the counter survives container restarts.
+    """
     global _daily_calls, _daily_reset_date
-    if _daily_reset_date != today:
-        _daily_calls = 0
-        _daily_reset_date = today
-    if _daily_calls >= config.DAILY_CLAUDE_API_CAP:
-        raise DailyCapExceededError(f"Daily Claude API cap of {config.DAILY_CLAUDE_API_CAP} reached")
-    _daily_calls += 1
+    if config.MOCK_MODE:
+        if _daily_reset_date != today:
+            _daily_calls = 0
+            _daily_reset_date = today
+        if _daily_calls >= config.DAILY_CLAUDE_API_CAP:
+            raise DailyCapExceededError(
+                f"Daily Claude API cap of {config.DAILY_CLAUDE_API_CAP} reached"
+            )
+        _daily_calls += 1
+        return
+
+    new_count = await increment_claude_daily_calls(today)
+    if new_count > config.DAILY_CLAUDE_API_CAP:
+        raise DailyCapExceededError(
+            f"Daily Claude API cap of {config.DAILY_CLAUDE_API_CAP} reached"
+        )
 
 
 def _build_client_list(contacts: list[dict]) -> str:
@@ -129,6 +148,32 @@ def _load_mock_response(text: str, contacts: list[dict] | None) -> LLMOutput:
         raise LLMValidationError(f"Mock fixture failed validation: {e}") from e
 
 
+async def _call_anthropic_with_retry(system: str, text: str):
+    """Call the Anthropic API with a single 3-second retry on transient errors.
+
+    Per spec §7: auto-retry once after a 3s delay, then surface as LLMAPIError.
+    """
+    for attempt in (1, 2):
+        try:
+            return await _get_client().messages.create(
+                model=_MODEL,
+                max_tokens=1024,
+                system=system,
+                messages=[{"role": "user", "content": text}],
+            )
+        except anthropic.APIError as e:
+            log.warning(
+                "llm_parser.api_error",
+                attempt=attempt,
+                error_type=type(e).__name__,
+                status=getattr(e, "status_code", None),
+            )
+            if attempt == 1:
+                await asyncio.sleep(_RETRY_DELAY_SECONDS)
+                continue
+            raise LLMAPIError(str(e)) from e
+
+
 async def parse_invoice_text(
     text: str,
     previous_data: dict | None = None,
@@ -146,7 +191,7 @@ async def parse_invoice_text(
             f"Session LLM cap of {config.SESSION_LLM_CALL_CAP} reached"
         )
 
-    _check_and_increment_daily(today)
+    await _check_and_increment_daily(today)
 
     if config.MOCK_MODE:
         log.info("llm_parser.mock_mode", text_preview=text[:60])
@@ -187,16 +232,7 @@ async def parse_invoice_text(
             f"Output schema:\n{_JSON_SCHEMA}"
         )
 
-    try:
-        response = await _get_client().messages.create(
-            model=_MODEL,
-            max_tokens=1024,
-            system=system,
-            messages=[{"role": "user", "content": text}],
-        )
-    except anthropic.APIError as e:
-        log.error("llm_parser.api_error", error_type=type(e).__name__, status=getattr(e, "status_code", None))
-        raise LLMAPIError(str(e)) from e
+    response = await _call_anthropic_with_retry(system, text)
 
     raw_text = response.content[0].text
     log.info("llm_parser.response", preview=raw_text[:120])
