@@ -39,3 +39,25 @@ def _fmt_date(value) -> str:
     if isinstance(value, date):
         return value.strftime("%-d %B %Y")
     return str(value)
+
+
+def format_contact_summary(draft: dict) -> str:
+    """Render the collected contact fields for the pre-save confirmation message."""
+    def _opt(key: str) -> str:
+        v = draft.get(key)
+        return str(v) if v not in (None, "") else "(not set)"
+
+    rate = draft.get("default_rate")
+    rate_line = f"Default rate: {_fmt(rate)} HKD" if rate not in (None, "") else "Default rate: (not set)"
+    return "\n".join([
+        "📇 Contact Preview",
+        "",
+        f"Client ID: {draft.get('client_id', '?')}",
+        f"Display name: {draft.get('display_name', '?')}",
+        f"Address: {draft.get('address', '?')}",
+        f"Contact person: {_opt('contact_person')}",
+        f"Email: {_opt('email')}",
+        f"Default description: {_opt('default_description')}",
+        f"Default service description: {_opt('default_service_description')}",
+        rate_line,
+    ])

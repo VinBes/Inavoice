@@ -6,6 +6,8 @@ from pydantic import BaseModel, field_validator
 
 _DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+_CLIENT_ID_RE = re.compile(r"^[a-z0-9_]{1,64}$")
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 class LLMLineItem(BaseModel):
@@ -37,3 +39,37 @@ class LLMOutput(BaseModel):
     description: Optional[str] = None
     line_items: list[LLMLineItem]
     missing_fields: list[str] = []
+
+
+class Contact(BaseModel):
+    client_id: str
+    display_name: str
+    address: str
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    default_description: Optional[str] = None
+    default_service_description: Optional[str] = None
+    default_rate: Optional[Decimal] = None
+
+    @field_validator("client_id")
+    @classmethod
+    def _client_id_slug(cls, v: str) -> str:
+        if not _CLIENT_ID_RE.match(v):
+            raise ValueError(
+                "client_id must be lowercase letters, digits, or underscores, max 64 chars"
+            )
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def _email_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not _EMAIL_RE.match(v):
+            raise ValueError("email must look like name@domain.tld")
+        return v
+
+    @field_validator("default_rate")
+    @classmethod
+    def _rate_positive(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v <= 0:
+            raise ValueError("default_rate must be positive")
+        return v
