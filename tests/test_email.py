@@ -6,8 +6,8 @@ import pytest
 import config
 from bot import handlers
 from bot.handlers import _sessions, handle_callback
-from bot.keyboards import delivery_keyboard
-from models.session import COMPLETE, Session
+from bot.keyboards import confirm_keyboard
+from models.session import COMPLETE, PENDING, Session
 
 _CHAT_ID = int(config.ALLOWED_CHAT_IDS[0])
 
@@ -35,6 +35,13 @@ def _make_callback(data, chat_id=_CHAT_ID):
     return update, query
 
 
+def _pending_session():
+    s = Session()
+    s.state = PENDING
+    s.computed_data = _COMPUTED_WITH_EMAIL.copy()
+    return s
+
+
 # ---------------------------------------------------------------------------
 # Test 4.1 — MOCK_MODE: send_invoice_email logs to stdout, no Resend call
 # ---------------------------------------------------------------------------
@@ -57,47 +64,56 @@ async def test_4_1_mock_mode_logs_stdout(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Test 4.2 — Delivery keyboard shape based on email availability
+# Test 4.2 — Confirm keyboard shape based on email availability
 # ---------------------------------------------------------------------------
 
-def test_4_2_no_email_keyboard_telegram_only():
-    kb = delivery_keyboard(has_email=False)
-    buttons = kb.inline_keyboard[0]
-    assert len(buttons) == 1
-    assert buttons[0].callback_data == "deliver_telegram"
+def test_4_2_no_email_keyboard_single_confirm():
+    kb = confirm_keyboard(has_email=False)
+    rows = kb.inline_keyboard
+    assert len(rows) == 1
+    datas = {b.callback_data for b in rows[0]}
+    assert datas == {"confirm", "edit", "cancel"}
 
 
-def test_4_2_with_email_keyboard_has_three_options():
-    kb = delivery_keyboard(has_email=True)
-    buttons = kb.inline_keyboard[0]
-    assert len(buttons) == 3
-    datas = {b.callback_data for b in buttons}
-    assert datas == {"deliver_email", "deliver_telegram", "deliver_both"}
+def test_4_2_with_email_keyboard_has_split_confirm():
+    kb = confirm_keyboard(has_email=True)
+    rows = kb.inline_keyboard
+    assert len(rows) == 2
+    row1 = {b.callback_data for b in rows[0]}
+    row2 = {b.callback_data for b in rows[1]}
+    assert row1 == {"confirm_email", "confirm_telegram"}
+    assert row2 == {"edit", "cancel"}
+    # The deprecated "deliver_*" / "Both" callbacks must be gone
+    all_datas = row1 | row2
+    assert "deliver_email" not in all_datas
+    assert "deliver_both" not in all_datas
 
 
 # ---------------------------------------------------------------------------
-# Test 4.3 — Email failure: PDF still delivered via Telegram
+# Test 4.3 — Email failure during Confirm + Email: PDF still delivered via Telegram
 # ---------------------------------------------------------------------------
 
 async def test_4_3_email_failure_still_sends_pdf():
     _sessions.clear()
-    s = Session()
-    s.state = COMPLETE
-    s.computed_data = _COMPUTED_WITH_EMAIL.copy()
-    _sessions[_CHAT_ID] = s
+    _sessions[_CHAT_ID] = _pending_session()
 
-    update, query = _make_callback("deliver_email")
+    update, query = _make_callback("confirm_email")
     ctx = MagicMock()
-    ctx.user_data = {"pdf_bytes": b"%PDF", "invoice_number": "ZARAFFA26-1"}
+    ctx.user_data = {}
 
-    with patch(
-        "bot.handlers.send_invoice_email",
-        side_effect=Exception("Resend API error"),
+    with (
+        patch("bot.handlers.create_invoice", return_value=("ZARAFFA26-1", b"%PDF")),
+        patch(
+            "bot.handlers.send_invoice_email",
+            side_effect=Exception("Resend API error"),
+        ),
     ):
         await handle_callback(update, ctx)
 
     # PDF was still sent via Telegram
     query.message.reply_document.assert_awaited_once()
-    # Error message was shown
-    error_text = query.message.reply_text.call_args[0][0]
-    assert "email failed" in error_text.lower()
+    # Status message mentions email failure
+    last_edit = query.edit_message_text.await_args_list[-1].args[0]
+    assert "Email failed" in last_edit
+    # Session was cleared (collapsed flow always ends at delivery)
+    assert _CHAT_ID not in _sessions

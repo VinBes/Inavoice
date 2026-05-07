@@ -302,8 +302,13 @@ CREATE TABLE invoices (
   pdf_storage_path TEXT NOT NULL,
   email_sent BOOLEAN NOT NULL DEFAULT FALSE,
   email_sent_at TIMESTAMPTZ,
+  last_resent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migration for existing deployments (the column was added after the initial
+-- schema). Safe to run multiple times — IF NOT EXISTS skips when present.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS last_resent_at TIMESTAMPTZ;
 
 -- Persistent daily Claude API call counter (survives container restarts)
 CREATE TABLE claude_daily_usage (

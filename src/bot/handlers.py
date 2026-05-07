@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
 import structlog
 from telegram import Update
@@ -14,11 +15,17 @@ from telegram.ext import (
 import config
 from config import ALLOWED_CHAT_IDS, TELEGRAM_BOT_TOKEN
 from bot.formatting import format_confirmation
-from bot.keyboards import confirm_keyboard, delivery_keyboard
+from bot.keyboards import confirm_keyboard
 from db.contacts import get_contact, list_contacts
+from db.invoices import list_recent_invoices
 from models.session import CANCELLED, COMPLETE, CONFIRMED, GENERATING, PENDING, Session
 from services.email_sender import send_invoice_email
-from services.invoice_service import create_invoice, merge_and_compute
+from services.invoice_service import (
+    InvoiceNotFoundError,
+    create_invoice,
+    merge_and_compute,
+    resend_invoice,
+)
 from services.llm_parser import (
     DailyCapExceededError,
     LLMAPIError,
@@ -59,7 +66,7 @@ async def _timeout_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 _HELP_TEXT = (
-    "Inavoice — voice-to-invoice bot.\n\n"
+    f"Inavoice — voice-to-invoice bot. (env: {config.DEPLOY_ENV})\n\n"
     "Send an invoice description as text (dictate via Wispr Flow on device "
     "for voice input). I'll parse it, show a preview, and generate the PDF "
     "after you confirm.\n\n"
@@ -68,6 +75,8 @@ _HELP_TEXT = (
     "Commands:\n"
     "  /start — greeting + known clients\n"
     "  /contacts — list known client IDs\n"
+    "  /invoices — list the 10 most recent invoices\n"
+    "  /resend <number> [email] — re-deliver a past invoice (Telegram only by default)\n"
     "  /cancel — cancel the current session\n"
     "  /help — show this message"
 )
@@ -78,7 +87,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     contacts = await list_contacts()
     lines = [
-        "👋 Inavoice ready.",
+        f"👋 Inavoice ready. (env: {config.DEPLOY_ENV})",
         "",
         "Dictate or type an invoice description and I'll handle the rest.",
         "",
@@ -126,6 +135,82 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         log.info("session.cancelled", chat_id=chat_id, source="command")
     else:
         await update.message.reply_text("No active invoice session.")
+
+
+async def invoices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _auth(update.effective_chat.id):
+        return
+    rows = await list_recent_invoices(limit=10)
+    if not rows:
+        await update.message.reply_text("No invoices yet.")
+        return
+    lines = ["Recent invoices:"]
+    for r in rows:
+        lines.append(
+            f"  • {r['invoice_number']} · {r['invoice_date']} · "
+            f"{r['client_id']} · {_fmt_amount(r['subtotal'])} HKD"
+        )
+    await update.message.reply_text("\n".join(lines))
+
+
+async def resend_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    if not _auth(chat_id):
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(
+            "Usage: /resend <invoice_number> [email]\n"
+            "Example: /resend ZARAFFA26-3 email"
+        )
+        return
+    if len(args) > 2:
+        await update.message.reply_text(
+            "Too many arguments. Use: /resend <invoice_number> [email]"
+        )
+        return
+    invoice_number = args[0]
+    send_email = False
+    if len(args) == 2:
+        if args[1] == "email":
+            send_email = True
+        else:
+            await update.message.reply_text(
+                f"Unknown option `{args[1]}`. Use: /resend <invoice_number> [email]"
+            )
+            return
+
+    try:
+        result = await resend_invoice(invoice_number, send_email=send_email)
+    except InvoiceNotFoundError:
+        await update.message.reply_text(f"Invoice {invoice_number} not found.")
+        return
+    except Exception:
+        log.exception("resend.failed", invoice_number=invoice_number, chat_id=chat_id)
+        await update.message.reply_text(
+            "Failed to retrieve the invoice. Try again in a minute."
+        )
+        return
+
+    # Pre-PDF status text — drive off the typed status, not message truthiness,
+    # so adding new statuses later forces a deliberate UX choice.
+    if result.email_status == "sent":
+        await update.message.reply_text(
+            f"Invoice {result.invoice_number} re-sent by email."
+        )
+    elif result.email_status in ("skipped_no_email", "failed"):
+        await update.message.reply_text(result.email_status_message or "")
+
+    await update.message.reply_document(
+        document=result.pdf_bytes,
+        filename=f"Invoice_{result.invoice_number}.pdf",
+    )
+    log.info(
+        "resend.delivered",
+        invoice_number=result.invoice_number,
+        chat_id=chat_id,
+        email_status=result.email_status,
+    )
 
 
 async def handle_unsupported(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -210,12 +295,100 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     session.computed_data = data  # flat dict for PDF + confirmation
+    has_email = bool(data.get("email"))
     msg = await update.message.reply_text(
-        format_confirmation(data), reply_markup=confirm_keyboard()
+        format_confirmation(data), reply_markup=confirm_keyboard(has_email)
     )
     session.message_id = msg.message_id
     _reset_timeout(chat_id, context)
     log.info("session.pending", chat_id=chat_id, client_id=data["client_id"])
+
+
+async def _execute_confirm(
+    query,
+    session: Session,
+    chat_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    send_email: bool,
+) -> None:
+    """Run the full confirm pipeline: claim number → PDF → upload → save → deliver.
+
+    Atomic from the user's perspective: one tap, one outcome. No interim state
+    shared between callbacks, so a process restart cannot strand a partially
+    delivered invoice.
+    """
+    # Cancel the pending session-timeout job; without this the user would get
+    # a spurious "session expired" message ~30 minutes after a successful
+    # delivery (the job that handle_message scheduled is still queued).
+    for job in context.job_queue.get_jobs_by_name(f"timeout_{chat_id}"):
+        job.schedule_removal()
+
+    session.state = GENERATING
+    await query.edit_message_text("Generating your invoice…")
+
+    computed = session.computed_data or {}
+    if computed.get("total") is None:
+        await query.edit_message_text(
+            "Invoice total is missing — please start over."
+        )
+        _sessions.pop(chat_id, None)
+        return
+
+    try:
+        invoice_number, pdf_bytes = await create_invoice(computed)
+    except Exception:
+        log.exception("create_invoice.failed", chat_id=chat_id)
+        await query.edit_message_text(
+            "Failed to generate the PDF. This is a system error — try again."
+        )
+        _sessions.pop(chat_id, None)
+        return
+
+    session.invoice_number = invoice_number
+    session.state = COMPLETE
+
+    if send_email:
+        email = computed.get("email")
+        try:
+            await send_invoice_email(
+                email,
+                invoice_number,
+                pdf_bytes,
+                computed.get("contact_person"),
+                computed.get("display_name", ""),
+                str(computed.get("due_date", "")),
+            )
+            await query.edit_message_text(
+                f"Invoice {invoice_number} ready. Emailed and sending PDF here…"
+            )
+        except Exception as e:
+            log.error(
+                "email_send.failed",
+                invoice_number=invoice_number,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            await query.edit_message_text(
+                f"Invoice {invoice_number} ready. Email failed — sending PDF here only."
+            )
+    else:
+        await query.edit_message_text(
+            f"Invoice {invoice_number} ready. Sending PDF…"
+        )
+
+    await query.message.reply_document(
+        document=pdf_bytes,
+        filename=f"Invoice_{invoice_number}.pdf",
+    )
+
+    _sessions.pop(chat_id, None)
+    log.info(
+        "session.delivered",
+        chat_id=chat_id,
+        invoice_number=invoice_number,
+        send_email=send_email,
+    )
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -230,39 +403,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     session = _sessions.get(chat_id)
     cb = query.data
 
-    if cb == "confirm":
+    if cb in ("confirm", "confirm_telegram", "confirm_email"):
         if session is None or session.state != PENDING:
             await query.answer("Already processing your invoice.", show_alert=True)
             return
         await query.answer()
-        session.state = GENERATING
-        await query.edit_message_text("Generating your invoice…")
-        computed = session.computed_data or {}
-        if computed.get("total") is None:
-            await query.edit_message_text(
-                "Invoice total is missing — please start over."
-            )
-            del _sessions[chat_id]
-            return
-        try:
-            invoice_number, pdf_bytes = await create_invoice(computed)
-        except Exception:
-            log.exception("create_invoice.failed", chat_id=chat_id)
-            await query.edit_message_text(
-                "Failed to generate the PDF. This is a system error — try again."
-            )
-            del _sessions[chat_id]
-            return
-        session.invoice_number = invoice_number
-        session.state = COMPLETE
-        context.user_data["pdf_bytes"] = pdf_bytes
-        context.user_data["invoice_number"] = invoice_number
-        has_email = bool(computed.get("email"))
-        await query.edit_message_text(
-            f"Invoice {invoice_number} ready. How would you like to deliver it?",
-            reply_markup=delivery_keyboard(has_email),
+        await _execute_confirm(
+            query, session, chat_id, context, send_email=(cb == "confirm_email")
         )
-        log.info("session.complete", chat_id=chat_id, invoice_number=invoice_number)
 
     elif cb == "edit":
         await query.answer()
@@ -278,54 +426,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text("Invoice cancelled.")
         log.info("session.cancelled", chat_id=chat_id)
 
-    elif cb in ("deliver_email", "deliver_telegram", "deliver_both"):
-        await query.answer()
-        pdf_bytes = context.user_data.get("pdf_bytes")
-        invoice_number = context.user_data.get("invoice_number")
-        if not pdf_bytes:
-            await query.edit_message_text("Session data lost. Please start over.")
-            return
 
-        computed = (session.computed_data or {}) if session else {}
-        contact_person = computed.get("contact_person")
-        display_name = computed.get("display_name", "")
-        email = computed.get("email", "")
-        due_date = str(computed.get("due_date", ""))
+def _fmt_amount(value) -> str:
+    """Format a numeric amount (Decimal or string from PostgREST) for display.
 
-        await query.edit_message_text("Sending…")
-
-        if cb in ("deliver_email", "deliver_both"):
-            try:
-                await send_invoice_email(
-                    email, invoice_number, pdf_bytes,
-                    contact_person, display_name, due_date,
-                )
-                await query.message.reply_text(f"Invoice sent to {email}.")
-            except Exception as e:
-                log.error(
-                    "email_send.failed",
-                    invoice_number=invoice_number,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-                await query.message.reply_text(
-                    "Invoice generated but email failed to send. Here's your PDF."
-                )
-
-        if cb in ("deliver_telegram", "deliver_both"):
-            await query.message.reply_document(
-                document=pdf_bytes,
-                filename=f"Invoice_{invoice_number}.pdf",
-            )
-        elif cb == "deliver_email":
-            # Email-only: still send PDF via Telegram per spec (always delivered)
-            await query.message.reply_document(
-                document=pdf_bytes,
-                filename=f"Invoice_{invoice_number}.pdf",
-            )
-
-        _sessions.pop(chat_id, None)
-        log.info("session.delivered", chat_id=chat_id, invoice_number=invoice_number, method=cb)
+    Returns "?" if the value is None or unparseable — `subtotal` is NOT NULL in
+    the schema, so this should never happen, but a malformed row should not
+    crash /invoices.
+    """
+    if value is None:
+        return "?"
+    try:
+        return format(Decimal(str(value)).normalize(), "f")
+    except (InvalidOperation, ValueError):
+        return "?"
 
 
 def build_application() -> Application:
@@ -333,6 +447,8 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("contacts", contacts_command))
+    app.add_handler(CommandHandler("invoices", invoices_command))
+    app.add_handler(CommandHandler("resend", resend_command))
     app.add_handler(CommandHandler("cancel", cancel_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(~filters.TEXT & ~filters.COMMAND, handle_unsupported))

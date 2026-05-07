@@ -97,21 +97,84 @@ def _pending_session_with_data():
 # Test 3.1 — Happy path: PENDING → Confirm → COMPLETE
 # ---------------------------------------------------------------------------
 
-async def test_3_1_confirm_happy_path():
+async def test_3_1_confirm_telegram_happy_path():
+    """Confirm + Telegram (has_email path): full pipeline runs in one callback,
+    PDF delivered via Telegram, session cleared."""
     _sessions.clear()
     _sessions[_CHAT_ID] = _pending_session_with_data()
 
-    update, query = _make_callback("confirm")
+    update, query = _make_callback("confirm_telegram")
     ctx = _make_context()
 
     with patch("bot.handlers.create_invoice", return_value=("ZARAFFA26-1", b"%PDF")):
         await handle_callback(update, ctx)
 
-    session = _sessions[_CHAT_ID]
-    assert session.state == COMPLETE
-    assert session.invoice_number == "ZARAFFA26-1"
-    assert ctx.user_data["pdf_bytes"] == b"%PDF"
-    query.edit_message_text.assert_awaited()
+    # Session is cleared after delivery in the collapsed flow
+    assert _CHAT_ID not in _sessions
+    # PDF was delivered via Telegram
+    query.message.reply_document.assert_awaited_once()
+    kwargs = query.message.reply_document.await_args.kwargs
+    assert kwargs["document"] == b"%PDF"
+    assert kwargs["filename"] == "Invoice_ZARAFFA26-1.pdf"
+
+
+async def test_3_1b_confirm_email_happy_path():
+    """Confirm + Email: email_sender called AND PDF still sent via Telegram."""
+    _sessions.clear()
+    _sessions[_CHAT_ID] = _pending_session_with_data()
+
+    update, query = _make_callback("confirm_email")
+    ctx = _make_context()
+
+    with (
+        patch("bot.handlers.create_invoice", return_value=("ZARAFFA26-1", b"%PDF")),
+        patch("bot.handlers.send_invoice_email") as mock_send,
+    ):
+        await handle_callback(update, ctx)
+
+    mock_send.assert_awaited_once()
+    query.message.reply_document.assert_awaited_once()
+    assert _CHAT_ID not in _sessions
+
+
+async def test_3_1d_confirm_cancels_pending_timeout_job():
+    """Regression: _execute_confirm must cancel the timeout job that
+    handle_message scheduled. Without this, the user sees a spurious
+    'session expired' message ~30 minutes after a successful invoice."""
+    _sessions.clear()
+    _sessions[_CHAT_ID] = _pending_session_with_data()
+
+    update, query = _make_callback("confirm_telegram")
+    ctx = _make_context()
+    fake_job = MagicMock()
+    ctx.job_queue.get_jobs_by_name = MagicMock(return_value=[fake_job])
+
+    with patch("bot.handlers.create_invoice", return_value=("ZARAFFA26-1", b"%PDF")):
+        await handle_callback(update, ctx)
+
+    fake_job.schedule_removal.assert_called_once()
+
+
+async def test_3_1c_confirm_no_email_uses_plain_confirm():
+    """Contact with no email: keyboard shows single 'Confirm' button (cb='confirm').
+    Behaves exactly like confirm_telegram — no email branch."""
+    _sessions.clear()
+    s = _pending_session_with_data()
+    s.computed_data["email"] = None  # no-email path
+    _sessions[_CHAT_ID] = s
+
+    update, query = _make_callback("confirm")
+    ctx = _make_context()
+
+    with (
+        patch("bot.handlers.create_invoice", return_value=("ZARAFFA26-1", b"%PDF")),
+        patch("bot.handlers.send_invoice_email") as mock_send,
+    ):
+        await handle_callback(update, ctx)
+
+    mock_send.assert_not_awaited()
+    query.message.reply_document.assert_awaited_once()
+    assert _CHAT_ID not in _sessions
 
 
 # ---------------------------------------------------------------------------
@@ -158,13 +221,14 @@ async def test_3_2_edit_loop():
     assert _sessions[_CHAT_ID].state == PENDING
     assert _sessions[_CHAT_ID].computed_data is not None
 
-    # Confirm
-    update2, query2 = _make_callback("confirm")
+    # Confirm (Telegram path since this contact has email)
+    update2, query2 = _make_callback("confirm_telegram")
     ctx3 = _make_context()
     with patch("bot.handlers.create_invoice", return_value=("ZARAFFA26-2", b"%PDF")):
         await handle_callback(update2, ctx3)
 
-    assert _sessions[_CHAT_ID].state == COMPLETE
+    # Session is cleared after delivery in the collapsed flow
+    assert _CHAT_ID not in _sessions
 
 
 # ---------------------------------------------------------------------------
