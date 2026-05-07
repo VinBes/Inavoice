@@ -82,6 +82,7 @@ Text → Claude parses → Confirm/Edit/Cancel → PDF → Email or Telegram
 
 - At the start of every session, read `docs/STATUS.md` to understand what has been built and what is still pending.
 - Before implementing any feature, read the relevant spec document first. Spec documents are listed in the Spec Documents table in this file.
+- **Adding a Telegram command:** every new `CommandHandler` must also be registered in the `BOT_COMMANDS` list in `src/bot/handlers.py` (and a one-line entry added to the `_HELP_TEXT` block) so it appears in the Telegram client's `/` autocomplete menu. Sub-commands (e.g. `/contacts add`) are dispatched from the parent command's handler — list the sub-command in `_HELP_TEXT` and reflect it in the parent's `BotCommand` description.
 - Push to main triggers Railway auto-deploy; rollback via dashboard if needed
 - Two Telegram bots: `@inavoice_dev_bot` for local dev (token in `.env`), production bot on Railway (token in Railway env vars). The `DEPLOY_ENV` env var labels which is which in the `/start` and `/help` banner — set to `local` in `.env` and `prod` on Railway. Never run two pollers against the same token.
 - All secrets in `.env` (never in code, always in .gitignore)
