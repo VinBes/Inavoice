@@ -30,6 +30,7 @@ from bot.formatting import format_confirmation
 from bot.keyboards import confirm_keyboard
 from db.contacts import get_contact, list_contacts
 from db.invoices import list_recent_invoices, update_email_id
+from models.schemas import Contact, LLMOutput
 from models.session import CANCELLED, COMPLETE, CONFIRMED, GENERATING, PENDING, Session
 from services.email_sender import send_invoice_email
 from services.invoice_service import (
@@ -75,6 +76,39 @@ async def _timeout_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
             chat_id, "Your invoice session has expired. Please start over."
         )
         log.info("session.timeout", chat_id=chat_id)
+
+
+def _augment_missing_fields(result: LLMOutput, contact: Contact | None) -> list[str]:
+    """Compute the authoritative missing-fields list for a parsed invoice.
+
+    The LLM's missing_fields is a hint — it can over- or under-report because
+    it doesn't see the contact's defaults. This function corrects both:
+    drops fields the handler can resolve, and adds fields that would still be
+    null after applying contact defaults (otherwise merge_and_compute would
+    raise or the DB would reject the insert).
+    """
+    needs: list[str] = []
+
+    if result.client_id is None:
+        needs.append("client_id")
+
+    if not result.line_items:
+        needs.append("service_description")
+        needs.append("rate")
+    else:
+        item = result.line_items[0]
+        default_desc = contact.default_description if contact else None
+        default_svc = contact.default_service_description if contact else None
+        default_rate = contact.default_rate if contact else None
+
+        if result.description is None and default_desc is None:
+            needs.append("description")
+        if item.service_description is None and default_svc is None:
+            needs.append("service_description")
+        if item.rate is None and default_rate is None:
+            needs.append("rate")
+
+    return needs
 
 
 _HELP_TEXT = (
@@ -320,20 +354,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     session.llm_call_count += 1
-    session.parsed_data = result.model_dump()  # always keep LLMOutput shape for correction path
 
-    if result.missing_fields:
-        fields = ", ".join(result.missing_fields)
+    # Resolve the contact early so we can compute "really missing" fields against
+    # the contact's defaults. The LLM's missing_fields is a hint — the handler is
+    # the source of truth, since the LLM doesn't know the contact's defaults.
+    contact = None
+    if result.client_id is not None:
+        contact = await get_contact(result.client_id)
+        if contact is None:
+            session.parsed_data = result.model_dump()
+            await update.message.reply_text(
+                "I don't recognize that client. Which client should this be for?"
+            )
+            _reset_timeout(chat_id, context)
+            return
+
+    augmented = _augment_missing_fields(result, contact)
+    result.missing_fields = augmented
+    session.parsed_data = result.model_dump()
+
+    if augmented:
+        fields = ", ".join(augmented)
         await update.message.reply_text(
             f"I need a few more details: {fields}. Please provide them."
-        )
-        _reset_timeout(chat_id, context)
-        return
-
-    contact = await get_contact(result.client_id)
-    if contact is None:
-        await update.message.reply_text(
-            "I don't recognize that client. Which client should this be for?"
         )
         _reset_timeout(chat_id, context)
         return

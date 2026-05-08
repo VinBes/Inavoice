@@ -225,6 +225,57 @@ def test_1_9_negative_rate():
 
 
 # ---------------------------------------------------------------------------
+# Test 1.10 — Missing description with no client default → ValueError
+# Regression for STATUS.md bug "description null crashes invoice creation".
+# Without the guard, merge_and_compute returns description=None and the
+# Postgres NOT NULL constraint rejects the insert later.
+# ---------------------------------------------------------------------------
+
+CLIENT_NO_DEFAULTS = Contact(
+    client_id="client_no_defaults",
+    display_name="Client No-Defaults Ltd.",
+    contact_person=None,
+    address="789 Test Road, Hong Kong",
+    email=None,
+    default_description=None,
+    default_service_description=None,
+    default_rate=None,
+)
+
+
+def test_1_10_missing_description_no_default_raises():
+    parsed = _make_output(
+        client_id="client_no_defaults",
+        description=None,
+        service_description="Some service",
+        rate=500,
+        rate_type="flat",
+        time_start=None,
+        time_end=None,
+    )
+    with pytest.raises(ValueError, match="description is required"):
+        merge_and_compute(parsed, CLIENT_NO_DEFAULTS)
+
+
+# ---------------------------------------------------------------------------
+# Test 1.11 — Missing service_description with no client default → ValueError
+# ---------------------------------------------------------------------------
+
+def test_1_11_missing_service_description_no_default_raises():
+    parsed = _make_output(
+        client_id="client_no_defaults",
+        description="Header line",
+        service_description=None,
+        rate=500,
+        rate_type="flat",
+        time_start=None,
+        time_end=None,
+    )
+    with pytest.raises(ValueError, match="service_description is required"):
+        merge_and_compute(parsed, CLIENT_NO_DEFAULTS)
+
+
+# ---------------------------------------------------------------------------
 # _strip_code_fence — defensive parsing for markdown-wrapped LLM responses
 # ---------------------------------------------------------------------------
 

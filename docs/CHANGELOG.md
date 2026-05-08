@@ -8,6 +8,28 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-08 — Missing-field detection moved to handler (deviation from llm-parsing-spec §3)
+
+- `docs/llm-parsing-spec.md` (§"Missing fields") assigns detection of missing
+  `description` / `service_description` / `rate` to the LLM. In practice
+  Claude Haiku occasionally omits the entry from `missing_fields` even when
+  the field is null and the contact has no default — flowing a NULL through
+  to `invoice_service.merge_and_compute` and on to the `invoices` table where
+  Postgres rejects with NOT NULL violation 23502. Authority for "is this
+  field missing?" now lives in `bot/handlers.py:_augment_missing_fields`,
+  which uses the LLM's list as a hint and corrects it against the resolved
+  contact's defaults. The handler can also drop fields the LLM over-reports.
+- `merge_and_compute` gains symmetric `ValueError` guards for `description`
+  and `service_description` (matching the existing rate guard) — defensive
+  net so any future caller that bypasses the handler gets a clear error
+  instead of a Postgres NULL violation.
+- `parse_invoice_text` gains a third "fill-missing-field" prompt branch.
+  Selected when `previous_data["missing_fields"]` is non-empty. Tells Claude
+  the user's input is the answer to the just-asked question, instead of a
+  free-form edit. Without it, plain replies like "DJ services" got
+  mis-routed by the general correction prompt and the same field re-appeared
+  in `missing_fields`, wedging the loop until `/cancel`.
+
 ## 2026-05-08 — Resend delivery webhook + /contacts edit & delete
 
 - **Resend webhook receiver added (`/webhooks/resend`)**, extending the existing
