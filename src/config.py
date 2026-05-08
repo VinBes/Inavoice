@@ -41,3 +41,14 @@ MOCK_MODE = os.getenv("MOCK_MODE", "true").lower() == "true"
 # tell at a glance which bot instance they're talking to (local docker compose
 # vs Railway). Free-form string; suggested values: "local", "prod".
 DEPLOY_ENV = os.getenv("DEPLOY_ENV", "local")
+
+# MOCK_MODE skips Svix signature verification on the Resend webhook
+# (src/health.py). Shipping that to production would let anyone on the
+# internet spoof delivery events and trigger Telegram broadcasts + DB writes.
+# Fail loudly at startup rather than silently degrading webhook auth.
+if MOCK_MODE and DEPLOY_ENV.lower() == "prod":
+    raise RuntimeError(
+        "MOCK_MODE=true is not allowed when DEPLOY_ENV=prod — "
+        "this would disable Resend webhook signature verification. "
+        "Set MOCK_MODE=false in the production environment."
+    )

@@ -8,6 +8,18 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-08 — Startup guard: MOCK_MODE forbidden when DEPLOY_ENV=prod
+
+- `src/config.py` now raises `RuntimeError` at import time if
+  `MOCK_MODE=true` and `DEPLOY_ENV=prod`. MOCK_MODE skips Svix signature
+  verification on the Resend webhook (`src/health.py:148`); accidentally
+  setting it in Railway would let anyone on the internet spoof delivery
+  events and trigger Telegram broadcasts + DB writes. Fail-closed at startup
+  rather than silently degrading webhook auth in production.
+- Comparison is lowercase to catch `Prod`/`PROD` typos. Local dev
+  (`DEPLOY_ENV=local`) and tests (`DEPLOY_ENV=test`, set in `conftest.py`)
+  remain unaffected.
+
 ## 2026-05-08 — Missing-field detection moved to handler (deviation from llm-parsing-spec §3)
 
 - `docs/llm-parsing-spec.md` (§"Missing fields") assigns detection of missing
