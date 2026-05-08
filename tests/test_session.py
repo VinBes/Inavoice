@@ -330,3 +330,181 @@ async def test_3_7_max_corrections():
 
     reply_text = update.message.reply_text.call_args[0][0]
     assert "Too many corrections" in reply_text
+
+
+# ---------------------------------------------------------------------------
+# Test 3.8 — Handler augments missing_fields when contact has no default_description
+# Regression for STATUS.md bug "description null crashes invoice creation": even
+# when the LLM returns missing_fields=[], the handler must re-prompt because the
+# resolved data would still flow a NULL into Postgres.
+# ---------------------------------------------------------------------------
+
+async def test_3_8_handler_augments_missing_fields_when_no_default_description():
+    _sessions.clear()
+
+    llm_result = LLMOutput(
+        client_id="client_no_defaults",
+        description=None,
+        line_items=[LLMLineItem(
+            service_date="26/03/2026",
+            service_description="Some service",
+            time_start="22:00",
+            time_end="00:00",
+            rate=500,
+            rate_type="hourly",
+            total=None,
+        )],
+        missing_fields=[],
+    )
+    contact = Contact(
+        client_id="client_no_defaults",
+        display_name="Client No-Defaults Ltd.",
+        contact_person=None,
+        address="Test Address",
+        email=None,
+        default_description=None,
+        default_service_description="Some service default",
+        default_rate=Decimal("500"),
+    )
+
+    update = _make_message_update("invoice for client no defaults")
+    ctx = _make_context()
+
+    with (
+        patch("bot.handlers.parse_invoice_text", return_value=llm_result),
+        patch("bot.handlers.get_contact", return_value=contact),
+        patch("bot.handlers.list_contacts", return_value=[contact]),
+        patch("bot.handlers.merge_and_compute") as mock_merge,
+    ):
+        await handle_message(update, ctx)
+
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "description" in reply_text
+    assert "more details" in reply_text
+    mock_merge.assert_not_called()
+    assert _sessions[_CHAT_ID].state == PENDING
+    assert _sessions[_CHAT_ID].parsed_data is not None
+    assert "description" in _sessions[_CHAT_ID].parsed_data["missing_fields"]
+
+
+# ---------------------------------------------------------------------------
+# Test 3.9 — Handler does NOT augment when contact has default_description
+# ---------------------------------------------------------------------------
+
+async def test_3_9_handler_does_not_augment_when_default_description_present():
+    _sessions.clear()
+
+    llm_result = LLMOutput(
+        client_id="client_a",
+        description=None,
+        line_items=[LLMLineItem(
+            service_date="26/03/2026",
+            service_description=None,
+            time_start="22:00",
+            time_end="00:00",
+            rate=None,
+            rate_type="hourly",
+            total=None,
+        )],
+        missing_fields=[],
+    )
+    contact = Contact(
+        client_id="client_a",
+        display_name="Client A Ltd.",
+        contact_person=None,
+        address="Test Address",
+        email="test@client-a.example.com",
+        default_description="Invoice for Client A booking",
+        default_service_description="Service for Client A",
+        default_rate=Decimal("500"),
+    )
+
+    update = _make_message_update("invoice for client a")
+    ctx = _make_context()
+
+    with (
+        patch("bot.handlers.parse_invoice_text", return_value=llm_result),
+        patch("bot.handlers.get_contact", return_value=contact),
+        patch("bot.handlers.list_contacts", return_value=[contact]),
+        patch("bot.handlers.merge_and_compute", return_value=_COMPUTED_DATA),
+    ):
+        await handle_message(update, ctx)
+
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "more details" not in reply_text
+    assert _sessions[_CHAT_ID].computed_data is not None
+
+
+# ---------------------------------------------------------------------------
+# Test 3.10 — Re-prompt loop closes when user supplies the missing field
+# Regression for STATUS.md bug "Re-prompt loop wedges after user answers".
+# ---------------------------------------------------------------------------
+
+async def test_3_10_reprompt_loop_closes_when_user_provides_missing_field():
+    _sessions.clear()
+
+    contact = Contact(
+        client_id="client_no_defaults",
+        display_name="Client No-Defaults Ltd.",
+        contact_person=None,
+        address="Test Address",
+        email=None,
+        default_description=None,
+        default_service_description="Some service default",
+        default_rate=Decimal("500"),
+    )
+
+    first_result = LLMOutput(
+        client_id="client_no_defaults",
+        description=None,
+        line_items=[LLMLineItem(
+            service_date="26/03/2026",
+            service_description="Some service",
+            time_start="22:00",
+            time_end="00:00",
+            rate=500,
+            rate_type="hourly",
+            total=None,
+        )],
+        missing_fields=[],
+    )
+    second_result = LLMOutput(
+        client_id="client_no_defaults",
+        description="DJ services",
+        line_items=[LLMLineItem(
+            service_date="26/03/2026",
+            service_description="Some service",
+            time_start="22:00",
+            time_end="00:00",
+            rate=500,
+            rate_type="hourly",
+            total=None,
+        )],
+        missing_fields=[],
+    )
+
+    ctx = _make_context()
+
+    with (
+        patch(
+            "bot.handlers.parse_invoice_text",
+            side_effect=[first_result, second_result],
+        ),
+        patch("bot.handlers.get_contact", return_value=contact),
+        patch("bot.handlers.list_contacts", return_value=[contact]),
+        patch("bot.handlers.merge_and_compute", return_value=_COMPUTED_DATA),
+    ):
+        # First message: bot re-prompts for description
+        update1 = _make_message_update("invoice for client no defaults")
+        await handle_message(update1, ctx)
+        reply1 = update1.message.reply_text.call_args[0][0]
+        assert "description" in reply1
+        assert "more details" in reply1
+
+        # Second message: user supplies the description; bot now shows confirmation
+        update2 = _make_message_update("DJ services")
+        await handle_message(update2, ctx)
+        reply2 = update2.message.reply_text.call_args[0][0]
+        assert "more details" not in reply2
+
+    assert _sessions[_CHAT_ID].computed_data is not None

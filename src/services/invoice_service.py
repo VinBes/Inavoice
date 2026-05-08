@@ -50,7 +50,15 @@ def merge_and_compute(parsed: LLMOutput, contact: Contact) -> dict:
     item = parsed.line_items[0]
 
     description = parsed.description or contact.default_description
+    if description is None:
+        raise ValueError(
+            "description is required but not provided and contact has no default_description"
+        )
     service_description = item.service_description or contact.default_service_description
+    if service_description is None:
+        raise ValueError(
+            "service_description is required but not provided and contact has no default_service_description"
+        )
 
     raw_rate = item.rate if item.rate is not None else contact.default_rate
     if raw_rate is None:

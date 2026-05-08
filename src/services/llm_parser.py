@@ -231,6 +231,30 @@ async def parse_invoice_text(
             f"- Do NOT guess or hallucinate values. If unsure, add the field to missing_fields.\n\n"
             f"Output schema:\n{_JSON_SCHEMA}"
         )
+    elif previous_data.get("missing_fields"):
+        # Targeted "fill in the missing fields" mode: the bot just asked the
+        # user for specific fields, so treat the user's reply as the answer
+        # rather than as a free-form edit. Without this branch, plain answers
+        # like "DJ services" got mis-routed by the general correction prompt
+        # and the same field re-appeared in missing_fields, wedging the loop.
+        missing_list = ", ".join(previous_data["missing_fields"])
+        system = (
+            f"You are an invoice data completer. The user was just asked to provide values for these missing fields: {missing_list}.\n\n"
+            f"Previous parsed data:\n{json.dumps(previous_data, indent=2)}\n\n"
+            f"The user's next message is their answer to that question. Treat their input as the value(s) "
+            f"for the listed missing fields, even if they don't restate the field name. For example, if the "
+            f"missing field is \"description\" and the user replies \"DJ services\", set description to "
+            f"\"DJ services\".\n\n"
+            f"Rules:\n"
+            f"- Output ONLY the complete updated JSON. No explanation, no markdown.\n"
+            f"- Update the listed missing fields with the user's input.\n"
+            f"- Remove a field from missing_fields once you have populated it.\n"
+            f"- Do not re-add a field to missing_fields unless the user's input is genuinely empty or ambiguous.\n"
+            f"- Do not change fields the user did not address.\n"
+            f"- If the user's input clearly addresses fields not in the missing list (e.g. they're correcting something else), apply that change too.\n"
+            f"- Set total to null — the backend will recompute it.\n\n"
+            f"Output schema:\n{_JSON_SCHEMA}"
+        )
     else:
         system = (
             f"You are an invoice data corrector. The user is editing a previously parsed invoice.\n\n"
