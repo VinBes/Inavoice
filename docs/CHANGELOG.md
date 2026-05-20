@@ -46,6 +46,18 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
   `src/bot/missing_field_flow.py`. The LLM correction loop now applies only
   to [Edit] taps and unknown-client recovery.
 
+## 2026-05-20 — Did-you-mean picker for unrecognised clients (Polish Batch 3 part 2)
+
+- When the LLM returns `client_id: null` and that's the ONLY missing
+  field, the bot now sends an inline keyboard listing known contacts
+  (`{display_name} ({client_id})`) instead of a bare text prompt.
+  Callback prefix `pick_client:<client_id>`; `pick_client:__none__`
+  dismisses. After the user taps a contact, the bot re-runs the
+  augment step against the picked contact's defaults — if everything
+  is resolved, the confirmation card appears; if other fields remain
+  (e.g. rate when the contact has no default), the new sequential
+  missing-field flow (Polish Batch 3 part 3) takes over.
+
 ## 2026-05-08 — Startup guard: MOCK_MODE forbidden when DEPLOY_ENV=prod
 
 - `src/config.py` now raises `RuntimeError` at import time if

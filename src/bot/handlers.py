@@ -27,7 +27,7 @@ from bot.contact_flow import (
     handle_contact_edit_message,
 )
 from bot.formatting import format_confirmation
-from bot.keyboards import confirm_keyboard
+from bot.keyboards import confirm_keyboard, pick_client_keyboard
 from bot.missing_field_flow import (
     _start_missing_field_flow,
     handle_missing_field_message,
@@ -405,6 +405,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     result.missing_fields = augmented
     session.parsed_data = result.model_dump(mode="json")
 
+    if augmented == ["client_id"]:
+        # Only the client_id is missing — show a quick-reply picker rather than
+        # forcing the user to retype the client. The "fill_missing" flow can
+        # still pick this up if the picked contact reveals other missing fields.
+        msg = await update.message.reply_text(
+            "I didn't recognise the client. Who is this invoice for?",
+            reply_markup=pick_client_keyboard(contacts),
+        )
+        session.message_id = msg.message_id
+        _reset_timeout(chat_id, context)
+        return
+
     if augmented:
         await _start_missing_field_flow(update.message, context, session, chat_id, augmented)
         return
@@ -604,6 +616,72 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
         await query.answer()
         await _execute_contact_delete_cancel(query, session, chat_id, context)
+
+    elif cb.startswith("pick_client:"):
+        await query.answer()
+        if session is None or session.state != PENDING:
+            return
+        chosen_id = cb.split(":", 1)[1]
+        if chosen_id == "__none__":
+            await query.edit_message_text(
+                "No client selected. Please send the invoice again with the client name."
+            )
+            _sessions.pop(chat_id, None)
+            log.info("pick_client.cancelled", chat_id=chat_id)
+            return
+
+        contact = await get_contact(chosen_id)
+        if contact is None:
+            await query.edit_message_text(
+                f"Contact {chosen_id!r} no longer exists. Please start over."
+            )
+            _sessions.pop(chat_id, None)
+            return
+
+        # Patch the chosen client_id into the stashed LLM output and re-run the
+        # augment logic. If other fields are still missing, hand off to the
+        # sequential missing-field flow; otherwise show the confirmation card.
+        parsed = dict(session.parsed_data or {})
+        parsed["client_id"] = chosen_id
+        session.parsed_data = parsed
+        try:
+            result = LLMOutput.model_validate(parsed)
+        except Exception:
+            log.exception("pick_client.parse_failed", chat_id=chat_id, client_id=chosen_id)
+            await query.edit_message_text(
+                "Something went wrong reading the stashed invoice draft. Please start over."
+            )
+            _sessions.pop(chat_id, None)
+            return
+
+        augmented = _augment_missing_fields(result, contact)
+        result.missing_fields = augmented
+        session.parsed_data = result.model_dump(mode="json")
+
+        if augmented:
+            await _start_missing_field_flow(query.message, context, session, chat_id, augmented)
+            log.info(
+                "pick_client.continued_to_fill_missing",
+                chat_id=chat_id, client_id=chosen_id, remaining=augmented,
+            )
+            return
+
+        try:
+            data = merge_and_compute(result, contact)
+        except ValueError as e:
+            await query.edit_message_text(str(e))
+            _sessions.pop(chat_id, None)
+            return
+
+        session.computed_data = data
+        has_email = bool(data.get("email"))
+        msg = await query.message.reply_text(
+            format_confirmation(data),
+            reply_markup=confirm_keyboard(has_email),
+        )
+        session.message_id = msg.message_id
+        _reset_timeout(chat_id, context)
+        log.info("pick_client.selected", chat_id=chat_id, client_id=chosen_id)
 
 
 def _fmt_amount(value) -> str:
