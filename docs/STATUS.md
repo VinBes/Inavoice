@@ -34,6 +34,15 @@ Track what has been built. Update checkboxes as modules are completed.
 
 ---
 
+## Polish Batch 3 — Contact Recognition & UX
+
+- [ ] **Add `aliases` field to Contact model** — comma-separated spoken variants (e.g. "AER, Aesthetic Radio, aesthetic") stored in DB and fed into the LLM prompt so Claude can match short nicknames and voice-transcription variants. Requires: DB migration to add `aliases` column, update `Contact` schema, update `_build_client_list` prompt format to show aliases, update `/contacts add` and `/contacts edit` flows to collect aliases.
+- [ ] **"Did you mean X?" fallback when client_id is null** — when the LLM returns `client_id: null` (unrecognized contact), show an inline list of known contacts as a quick-reply keyboard instead of a bare prompt. Lets the user tap the right contact rather than re-typing.
+- [ ] **Human-readable missing-field prompts, one at a time** — replace the flat `"I need a few more details: description, service_description, rate"` message with sequential per-field questions that name where each value appears on the invoice (e.g. "What's the header line for this invoice?").
+- [ ] **Greeting detection** — if the user's first message (no active session) looks like a greeting ("hello", "hi", "hey", etc.), respond with the `/start` welcome text instead of sending it to the LLM.
+
+---
+
 ## Open bugs
 
 - [x] **`description` null crashes invoice creation** — when the LLM doesn't extract a `description` and the contact has no `default_description`, `merge_and_compute` returned `description=None` and `save_invoice` crashed on the NOT NULL constraint (Postgres `23502`). Observed 2026-05-08 with a freshly-added `bounce_test` contact during webhook smoke-testing. Fixed in `fix/missing-description-and-reprompt-wedge`: handler-side `_augment_missing_fields` re-prompts for `description` / `service_description` / `rate` when the contact has no default, and `merge_and_compute` gained defensive `ValueError` guards.

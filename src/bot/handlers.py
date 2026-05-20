@@ -362,7 +362,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if result.client_id is not None:
         contact = await get_contact(result.client_id)
         if contact is None:
-            session.parsed_data = result.model_dump()
+            session.parsed_data = result.model_dump(mode="json")
             await update.message.reply_text(
                 "I don't recognize that client. Which client should this be for?"
             )
@@ -371,7 +371,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     augmented = _augment_missing_fields(result, contact)
     result.missing_fields = augmented
-    session.parsed_data = result.model_dump()
+    session.parsed_data = result.model_dump(mode="json")
 
     if augmented:
         fields = ", ".join(augmented)
