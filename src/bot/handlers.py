@@ -117,7 +117,7 @@ def _augment_missing_fields(result: LLMOutput, contact: Contact | None) -> list[
 
 _GREETING_TOKENS: frozenset[str] = frozenset({
     "hi", "hello", "hey", "yo", "sup", "howdy",
-    "good morning", "good afternoon", "good evening",
+    "good morning", "good afternoon", "good evening", "good day",
     "hiya", "greetings",
 })
 

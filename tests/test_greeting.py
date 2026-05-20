@@ -81,6 +81,11 @@ def test_is_greeting_good_morning():
     assert _is_greeting("good morning") is True
 
 
+def test_is_greeting_good_day():
+    assert _is_greeting("good day") is True
+    assert _is_greeting("Good Day!") is True
+
+
 def test_is_greeting_empty():
     assert _is_greeting("") is False
 
