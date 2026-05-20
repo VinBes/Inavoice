@@ -2,7 +2,7 @@ import re
 from decimal import Decimal
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 _DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
@@ -50,6 +50,7 @@ class Contact(BaseModel):
     default_description: Optional[str] = None
     default_service_description: Optional[str] = None
     default_rate: Optional[Decimal] = None
+    aliases: list[str] = []
 
     @field_validator("client_id")
     @classmethod
@@ -73,6 +74,27 @@ class Contact(BaseModel):
         if v is not None and v <= 0:
             raise ValueError("default_rate must be positive")
         return v
+
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def _coerce_aliases(cls, v: object) -> list[str]:
+        """Accept comma-separated string (from Supabase TEXT) or list.
+
+        None or empty string becomes an empty list. Whitespace around each
+        alias is stripped; empties are dropped.
+        """
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [part.strip() for part in v.split(",") if part.strip()]
+        if isinstance(v, list):
+            return [str(part).strip() for part in v if str(part).strip()]
+        raise ValueError("aliases must be a string or list of strings")
+
+    @field_serializer("aliases")
+    def _serialize_aliases(self, value: list[str]) -> str:
+        """Join the list back to a comma-separated string for Supabase TEXT."""
+        return ", ".join(value)
 
 
 # Resend webhook payloads. Only the fields the bot uses are typed; extras are

@@ -265,7 +265,8 @@ Expected: counter resets at midnight HKT
     "email": "accounts@client-a.example.com",
     "default_description": "Invoice for Client A booking",
     "default_service_description": "Service for Client A",
-    "default_rate": 500
+    "default_rate": 500,
+    "aliases": "client a, CA"
   },
   "client_b": {
     "display_name": "Client B Ltd.",
@@ -274,7 +275,8 @@ Expected: counter resets at midnight HKT
     "email": null,
     "default_description": "Invoice for Client B services",
     "default_service_description": "Service for Client B",
-    "default_rate": null
+    "default_rate": null,
+    "aliases": ""
   }
 }
 ```

@@ -77,6 +77,9 @@ def contact_field_picker_keyboard() -> InlineKeyboardMarkup:
             ),
         ],
         [
+            InlineKeyboardButton("Aliases", callback_data="contact_edit_field:aliases"),
+        ],
+        [
             InlineKeyboardButton("Done", callback_data="contact_edit_done"),
         ],
     ])
