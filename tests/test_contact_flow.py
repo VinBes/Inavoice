@@ -178,16 +178,72 @@ async def test_ca_7_full_happy_path_reaches_summary():
         "skip",                      # default_description
         "skip",                      # default_service_description
         "500",                       # default_rate
+        "NC, New Client",            # aliases
     ]
     for text in inputs:
         update = _make_message_update(text)
         ctx = _make_context()
         await handle_message(update, ctx)
 
-    # All 8 steps consumed; final reply should include summary + keyboard
+    # All 9 steps consumed; final reply should include summary + keyboard
     final_call = update.message.reply_text.await_args
     assert "Contact Preview" in final_call[0][0]
     assert final_call.kwargs.get("reply_markup") is not None
+    # Aliases line is rendered in the summary
+    assert "Aliases:" in final_call[0][0]
+    assert "NC" in final_call[0][0]
+
+
+async def test_ca_aliases_step_accepts_comma_string():
+    """Aliases is the last step (index 8); a comma-separated string is stored verbatim."""
+    _sessions.clear()
+    _sessions[_CHAT_ID] = _add_contact_session(
+        step=8,
+        draft_extras={
+            "client_id": "aesthetic_radio",
+            "display_name": "Aesthetic Radio HK",
+            "address": "HK",
+            "contact_person": None,
+            "email": None,
+            "default_description": None,
+            "default_service_description": None,
+            "default_rate": None,
+        },
+    )
+    update = _make_message_update("AER, aesthetic")
+    ctx = _make_context()
+    await handle_message(update, ctx)
+
+    # Step advances past the last index; draft holds the raw string.
+    assert _sessions[_CHAT_ID].contact_draft["_step"] == 9
+    assert _sessions[_CHAT_ID].contact_draft["aliases"] == "AER, aesthetic"
+    # Summary message includes the aliases line.
+    final_call = update.message.reply_text.await_args
+    assert "AER" in final_call[0][0]
+
+
+async def test_ca_aliases_step_skip_clears():
+    """Aliases is optional; `skip` should store None (Contact coerces to [])."""
+    _sessions.clear()
+    _sessions[_CHAT_ID] = _add_contact_session(
+        step=8,
+        draft_extras={
+            "client_id": "aesthetic_radio",
+            "display_name": "Aesthetic Radio HK",
+            "address": "HK",
+            "contact_person": None,
+            "email": None,
+            "default_description": None,
+            "default_service_description": None,
+            "default_rate": None,
+        },
+    )
+    update = _make_message_update("skip")
+    ctx = _make_context()
+    await handle_message(update, ctx)
+
+    assert _sessions[_CHAT_ID].contact_draft["_step"] == 9
+    assert _sessions[_CHAT_ID].contact_draft["aliases"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +253,7 @@ async def test_ca_7_full_happy_path_reaches_summary():
 async def test_ca_8_confirm_saves_contact():
     _sessions.clear()
     s = _add_contact_session(
-        step=8,
+        step=9,
         draft_extras={
             "client_id": "new_client",
             "display_name": "New Client",
@@ -207,6 +263,7 @@ async def test_ca_8_confirm_saves_contact():
             "default_description": None,
             "default_service_description": None,
             "default_rate": Decimal("500"),
+            "aliases": None,
         },
     )
     _sessions[_CHAT_ID] = s
@@ -225,7 +282,7 @@ async def test_ca_8_confirm_saves_contact():
 
 async def test_ca_9_cancel_clears_session():
     _sessions.clear()
-    _sessions[_CHAT_ID] = _add_contact_session(step=8)
+    _sessions[_CHAT_ID] = _add_contact_session(step=9)
     update, query = _make_callback("contact_cancel")
     ctx = _make_context()
     await handle_callback(update, ctx)
@@ -239,7 +296,7 @@ async def test_ca_12_contact_confirm_validates_before_upsert():
     """Final guard: if the draft somehow has invalid data, upsert must not run."""
     _sessions.clear()
     s = _add_contact_session(
-        step=8,
+        step=9,
         draft_extras={
             # Bypass step validation by setting an invalid client_id directly
             "client_id": "BAD ID",

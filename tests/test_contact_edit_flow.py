@@ -279,4 +279,28 @@ def test_edit_field_picker_excludes_client_id():
     # And confirm the editable fields ARE present
     assert "contact_edit_field:display_name" in callback_data
     assert "contact_edit_field:email" in callback_data
+    assert "contact_edit_field:aliases" in callback_data
     assert "contact_edit_done" in callback_data
+
+
+async def test_edit_field_aliases_persists_comma_string():
+    """Aliases edit accepts a comma-separated string; Contact coerces to list."""
+    _sessions.clear()
+    _sessions[_CHAT_ID] = _edit_session(_editing_field="aliases")
+
+    update = _make_message_update("AER, aesthetic")
+    ctx = _make_context()
+    with patch(
+        "bot.contact_flow.get_contact",
+        new=AsyncMock(return_value=_sample_contact()),
+    ), patch(
+        "bot.contact_flow.upsert_contact", new=AsyncMock()
+    ) as mock_upsert:
+        await handle_contact_edit_message(
+            update, ctx, _sessions[_CHAT_ID], _CHAT_ID
+        )
+
+    mock_upsert.assert_awaited_once()
+    saved = mock_upsert.await_args.args[0]
+    assert isinstance(saved, Contact)
+    assert saved.aliases == ["AER", "aesthetic"]

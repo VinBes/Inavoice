@@ -8,6 +8,29 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-20 — Contacts gain `aliases` column (Polish Batch 3 part 1)
+
+- **`contacts.aliases TEXT NOT NULL DEFAULT ''`** added. Stored as a
+  comma-separated string in Supabase; exposed as `list[str]` in `Contact`
+  via a `@field_validator("aliases", mode="before")` that splits on comma +
+  strips whitespace + drops empties, and a `@field_serializer("aliases")`
+  that joins back to a string on write. Migration name:
+  `add_aliases_to_contacts`. Applied in Wave 3 of Polish Batch 3.
+- **Fed into the LLM prompt.** `_build_client_list` in
+  `src/services/llm_parser.py` renders a contact with aliases as
+  `"client_a" → Client A Ltd. (also: AER, aesthetic)` so Claude can map
+  nicknames and voice-transcription variants. No `(also: …)` suffix when
+  the alias list is empty.
+- **Fed into the MOCK_MODE fixture matcher.** `_load_mock_response` now
+  also matches when any alias substring (case-insensitive) appears in the
+  input text, alongside the existing `client_id` / `display_name`
+  matching. New fixture `aesthetic_radio_hourly_full.json` exercises the
+  alias path against a real contact.
+- **Surfaced in the `/contacts` add/edit flow.** New optional step in
+  `bot/contact_flow.py` after `default_rate`; new Aliases button on the
+  edit picker keyboard. `format_contact_summary` renders an `Aliases:`
+  line (joined with commas, or `(none)`).
+
 ## 2026-05-08 — Startup guard: MOCK_MODE forbidden when DEPLOY_ENV=prod
 
 - `src/config.py` now raises `RuntimeError` at import time if

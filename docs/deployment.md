@@ -307,7 +307,8 @@ CREATE TABLE contacts (
   email TEXT,
   default_description TEXT,
   default_service_description TEXT,
-  default_rate NUMERIC
+  default_rate NUMERIC,
+  aliases TEXT NOT NULL DEFAULT ''
 );
 
 -- Invoices (metadata + storage reference)
@@ -330,6 +331,11 @@ CREATE TABLE invoices (
 -- Migration for existing deployments (the column was added after the initial
 -- schema). Safe to run multiple times — IF NOT EXISTS skips when present.
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS last_resent_at TIMESTAMPTZ;
+
+-- Migration: contacts.aliases (added 2026-05-20). Comma-separated spoken
+-- variants fed into the LLM prompt and the MOCK_MODE fixture matcher.
+-- Migration name: add_aliases_to_contacts. Idempotent.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS aliases TEXT NOT NULL DEFAULT '';
 
 -- Resend delivery-status tracking (added 2026-05-08). Migration name:
 -- add_email_delivery_columns_to_invoices. Idempotent.

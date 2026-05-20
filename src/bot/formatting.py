@@ -49,11 +49,21 @@ def format_contact_summary(draft: dict) -> str:
 
     rate = draft.get("default_rate")
     rate_line = f"Default rate: {_fmt(rate)} HKD" if rate not in (None, "") else "Default rate: (not set)"
+
+    aliases_value = draft.get("aliases")
+    if isinstance(aliases_value, list):
+        aliases_line = ", ".join(aliases_value) if aliases_value else "(none)"
+    elif isinstance(aliases_value, str) and aliases_value.strip():
+        aliases_line = aliases_value
+    else:
+        aliases_line = "(none)"
+
     return "\n".join([
         "📇 Contact Preview",
         "",
         f"Client ID: {draft.get('client_id', '?')}",
         f"Display name: {draft.get('display_name', '?')}",
+        f"Aliases: {aliases_line}",
         f"Address: {draft.get('address', '?')}",
         f"Contact person: {_opt('contact_person')}",
         f"Email: {_opt('email')}",

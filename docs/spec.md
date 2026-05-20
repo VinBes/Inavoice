@@ -136,7 +136,8 @@ CREATE TABLE contacts (
   email TEXT,
   default_description TEXT,
   default_service_description TEXT,
-  default_rate NUMERIC
+  default_rate NUMERIC,
+  aliases TEXT NOT NULL DEFAULT ''
 );
 ```
 
@@ -145,6 +146,7 @@ CREATE TABLE contacts (
 - `default_description`: header line above invoice table (separate from line item description)
 - `default_service_description`: text in the table's Service column
 - `default_rate`: if null, user must provide rate every time
+- `aliases`: comma-separated spoken variants (e.g. "AER, Aesthetic Radio, aesthetic"); rendered into the LLM prompt so Claude can match nicknames and voice-transcription variants. Also used by the MOCK_MODE fixture matcher in `services/llm_parser.py`.
 
 Client data to be populated during the build phase.
 

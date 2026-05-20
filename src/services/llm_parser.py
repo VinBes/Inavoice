@@ -96,18 +96,41 @@ async def _check_and_increment_daily(today: date) -> None:
         )
 
 
+def _aliases_for(contact: object) -> list[str]:
+    """Extract aliases from a Contact instance or dict.
+
+    Handles three storage shapes: a `list[str]` (Contact instance), a
+    comma-separated string (raw Supabase row), or absent / None.
+    """
+    raw = getattr(contact, "aliases", None)
+    if raw is None and isinstance(contact, dict):
+        raw = contact.get("aliases", [])
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [part.strip() for part in raw.split(",") if part.strip()]
+    if isinstance(raw, list):
+        return [str(part).strip() for part in raw if str(part).strip()]
+    return []
+
+
 def _build_client_list(contacts: list) -> str:
     """Render the known-clients block for the system prompt.
 
     Accepts either Contact instances (production) or plain dicts (legacy/test
     fixtures); attribute access via getattr handles both without forcing every
-    test fixture to wrap rows in Contact.
+    test fixture to wrap rows in Contact. When a contact has aliases, they are
+    appended as ` (also: alias1, alias2)` so Claude can match nicknames and
+    voice-transcription variants.
     """
-    return "\n".join(
-        f'- "{getattr(c, "client_id", None) or c["client_id"]}" → '
-        f'{getattr(c, "display_name", None) or c["display_name"]}'
-        for c in contacts
-    )
+    lines = []
+    for c in contacts:
+        cid = getattr(c, "client_id", None) or c["client_id"]
+        display = getattr(c, "display_name", None) or c["display_name"]
+        aliases = _aliases_for(c)
+        suffix = f" (also: {', '.join(aliases)})" if aliases else ""
+        lines.append(f'- "{cid}" → {display}{suffix}')
+    return "\n".join(lines)
 
 
 def _strip_code_fence(text: str) -> str:
@@ -138,9 +161,15 @@ def _load_mock_response(text: str, contacts: list | None) -> LLMOutput:
                 getattr(contact, "display_name", None) or contact["display_name"]
             )
             cid_lower = cid.lower()
+            alias_match = any(
+                alias.lower() in text_lower
+                for alias in _aliases_for(contact)
+                if alias
+            )
             if (cid_lower in text_lower
                     or cid_lower.replace("_", " ") in text_lower
-                    or display_name.lower() in text_lower):
+                    or display_name.lower() in text_lower
+                    or alias_match):
                 candidates = sorted(FIXTURES_DIR.glob(f"{cid}_*.json"))
                 if candidates:
                     matched_fixture = candidates[0]

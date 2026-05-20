@@ -86,3 +86,62 @@ class TestContact:
         original = Contact(**self._full_data())
         round_tripped = Contact(**original.model_dump())
         assert round_tripped == original
+
+
+class TestContactAliases:
+    """Aliases coercion (str → list) and serialization (list → str)."""
+
+    def _full_data(self, **overrides):
+        base = {
+            "client_id": "aesthetic_radio",
+            "display_name": "Aesthetic Radio HK",
+            "address": "Unit 12, 5/F, 88 Test Road\nHong Kong",
+        }
+        base.update(overrides)
+        return base
+
+    def test_aliases_default_is_empty_list(self):
+        c = Contact(**self._full_data())
+        assert c.aliases == []
+
+    def test_aliases_from_comma_separated_string(self):
+        c = Contact(**self._full_data(aliases="AER, Aesthetic Radio, aesthetic"))
+        assert c.aliases == ["AER", "Aesthetic Radio", "aesthetic"]
+
+    def test_aliases_strips_whitespace(self):
+        c = Contact(**self._full_data(aliases="  AER  ,  aesthetic  "))
+        assert c.aliases == ["AER", "aesthetic"]
+
+    def test_aliases_drops_empty_segments(self):
+        c = Contact(**self._full_data(aliases="AER,,  ,aesthetic"))
+        assert c.aliases == ["AER", "aesthetic"]
+
+    def test_aliases_empty_string_is_empty_list(self):
+        c = Contact(**self._full_data(aliases=""))
+        assert c.aliases == []
+
+    def test_aliases_none_is_empty_list(self):
+        c = Contact(**self._full_data(aliases=None))
+        assert c.aliases == []
+
+    def test_aliases_accepts_list(self):
+        c = Contact(**self._full_data(aliases=["AER", "aesthetic"]))
+        assert c.aliases == ["AER", "aesthetic"]
+
+    def test_aliases_serialize_back_to_comma_string(self):
+        c = Contact(**self._full_data(aliases=["AER", "aesthetic"]))
+        dumped = c.model_dump(mode="json")
+        assert dumped["aliases"] == "AER, aesthetic"
+
+    def test_aliases_serialize_empty_list_is_empty_string(self):
+        c = Contact(**self._full_data())
+        dumped = c.model_dump(mode="json")
+        assert dumped["aliases"] == ""
+
+    def test_aliases_round_trip_through_string(self):
+        original = Contact(**self._full_data(aliases="AER, aesthetic"))
+        serialized = original.model_dump(mode="json")
+        restored = Contact.model_validate(
+            {**self._full_data(), "aliases": serialized["aliases"]}
+        )
+        assert restored.aliases == ["AER", "aesthetic"]
