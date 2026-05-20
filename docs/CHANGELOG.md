@@ -8,6 +8,94 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-21 — Upgrade transitive deps; ignore disputed pyjwt advisory
+
+- Regenerated `requirements.txt` and `requirements-dev.txt` via
+  `pip-compile --upgrade` to clear three pre-existing pip-audit findings:
+  `idna 3.11/3.13 → 3.15` (CVE-2026-45409), `urllib3 2.6.3 → 2.7.0`
+  (PYSEC-2026-141, PYSEC-2026-142).
+- `pyjwt 2.12.1 PYSEC-2025-183` (CVE-2025-45768) has no upstream fix and
+  is disputed — maintainers argue key strength is the caller's
+  responsibility. pyjwt is transitive via `supabase` → `storage3` for
+  token verification only; we never call pyjwt's encryption APIs
+  directly. Suppressed in `hooks/pre-push` via `--ignore-vuln
+  PYSEC-2025-183` with a comment pointing at the dispute. Re-evaluate if
+  an upstream fix lands or our use of supabase changes.
+- `hooks/pre-push` simultaneously made venv-aware (calls
+  `./.venv/bin/pytest` / `./.venv/bin/pip-audit` so it works when the
+  developer's shell doesn't have the venv activated, which is the case
+  during `git push`).
+
+## 2026-05-20 — Split docker-compose for MOCK_MODE smoke testing
+
+- The base `docker-compose.yml` is now prod-shaped: it mounts only `./src`
+  and matches the image's actual filesystem (which excludes `tests/` via
+  `.dockerignore`). Plain `docker compose up` will therefore make
+  `MOCK_MODE=true` fail to find fixtures — by design, so the compose file
+  stays honest about prod shape.
+- New `docker-compose.dev.yml` adds a read-only `./tests:/app/tests:ro`
+  mount as an overlay. MOCK_MODE smoke testing requires running with both
+  files: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`.
+- Discovered during PB3 smoke testing: MOCK_MODE in docker-compose had been
+  silently broken since the fixture loader was added (fixtures live in
+  `tests/`, image excludes `tests/`, no mount existed). Pytest never hit
+  this because pytest runs from the host with `tests/` in the working
+  tree. The startup guard in `src/config.py` (RuntimeError when
+  `MOCK_MODE=true` AND `DEPLOY_ENV=prod`) remains the actual safety net
+  against MOCK_MODE leaking into production regardless.
+- `docs/deployment.md` and `CLAUDE.md` updated to document the two
+  commands.
+
+## 2026-05-20 — Contacts gain `aliases` column (Polish Batch 3 part 1)
+
+- **`contacts.aliases TEXT NOT NULL DEFAULT ''`** added. Stored as a
+  comma-separated string in Supabase; exposed as `list[str]` in `Contact`
+  via a `@field_validator("aliases", mode="before")` that splits on comma +
+  strips whitespace + drops empties, and a `@field_serializer("aliases")`
+  that joins back to a string on write. Migration name:
+  `add_aliases_to_contacts`. Applied in Wave 3 of Polish Batch 3.
+- **Fed into the LLM prompt.** `_build_client_list` in
+  `src/services/llm_parser.py` renders a contact with aliases as
+  `"client_a" → Client A Ltd. (also: AER, aesthetic)` so Claude can map
+  nicknames and voice-transcription variants. No `(also: …)` suffix when
+  the alias list is empty.
+- **Fed into the MOCK_MODE fixture matcher.** `_load_mock_response` now
+  also matches when any alias substring (case-insensitive) appears in the
+  input text, alongside the existing `client_id` / `display_name`
+  matching. New fixture `aesthetic_radio_hourly_full.json` exercises the
+  alias path against a real contact.
+- **Surfaced in the `/contacts` add/edit flow.** New optional step in
+  `bot/contact_flow.py` after `default_rate`; new Aliases button on the
+  edit picker keyboard. `format_contact_summary` renders an `Aliases:`
+  line (joined with commas, or `(none)`).
+
+## 2026-05-20 — Sequential missing-field collection (deviation from spec §3 step 4)
+
+- Missing-field collection switched from a single flat message ("I need a
+  few more details: description, rate. Please provide them.") to a
+  sequential per-field flow. The bot first sends a rich OVERVIEW message
+  mapping each missing field to where it appears on the invoice plus an
+  example, then asks ONE field per message.
+- Answers are validated locally (no LLM call per answer): positive Decimal
+  for `rate`, contacts existence for `client_id`. Extra information typed
+  alongside the value is ignored — the user can refine further via [Edit]
+  on the confirmation card.
+- New `Session.mode = "fill_missing"`; logic lives in
+  `src/bot/missing_field_flow.py`. The LLM correction loop now applies only
+  to [Edit] taps and unknown-client recovery.
+
+## 2026-05-20 — Did-you-mean picker for unrecognised clients (Polish Batch 3 part 2)
+
+- When the LLM returns `client_id: null` and that's the ONLY missing
+  field, the bot now sends an inline keyboard listing known contacts
+  (`{display_name} ({client_id})`) instead of a bare text prompt.
+  Callback prefix `pick_client:<client_id>`; `pick_client:__none__`
+  dismisses. After the user taps a contact, the bot re-runs the
+  augment step against the picked contact's defaults — if everything
+  is resolved, the confirmation card appears; if other fields remain
+  (e.g. rate when the contact has no default), the new sequential
+  missing-field flow (Polish Batch 3 part 3) takes over.
+
 ## 2026-05-08 — Startup guard: MOCK_MODE forbidden when DEPLOY_ENV=prod
 
 - `src/config.py` now raises `RuntimeError` at import time if

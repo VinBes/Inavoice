@@ -60,12 +60,16 @@ The LLM parser is the core intelligence of Inavoice. It receives transcribed voi
 
 ## Client Matching
 
-The LLM prompt includes the full list of known client aliases and display names. Example:
+The LLM prompt includes the full list of known client display names plus any
+spoken aliases stored on each contact. Aliases come from the
+`contacts.aliases` column (comma-separated TEXT) and are rendered by
+`_build_client_list` in `src/services/llm_parser.py` as ` (also: …)` after
+the display name. Example:
 
 ```
 Known clients:
-- "client_a" → Client A Ltd. (aliases: "{{CLIENT_A_ALIASES}}")
-- "client_b" → Client B Ltd. (aliases: "{{CLIENT_B_ALIASES}}")
+- "client_a" → Client A Ltd. (also: AER, aesthetic)
+- "client_b" → Client B Ltd.
 ```
 
 ### Matching Rules

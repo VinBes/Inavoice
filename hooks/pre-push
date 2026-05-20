@@ -3,13 +3,28 @@ set -e
 
 echo "Running pre-push checks..."
 
+# Use the project venv binaries explicitly so the hook works regardless of
+# whether the user's shell has the venv activated. Falls back to PATH only
+# if the venv binary is absent (e.g. CI environment where deps are global).
+PYTEST_BIN="${PYTEST_BIN:-./.venv/bin/pytest}"
+PIPAUDIT_BIN="${PIPAUDIT_BIN:-./.venv/bin/pip-audit}"
+[[ -x "$PYTEST_BIN"   ]] || PYTEST_BIN=pytest
+[[ -x "$PIPAUDIT_BIN" ]] || PIPAUDIT_BIN=pip-audit
+
 echo "→ pytest"
-pytest
+"$PYTEST_BIN"
+
+# PYSEC-2025-183 (pyjwt < no fix) — disputed advisory (CVE-2025-45768).
+# Maintainers argue key strength is the caller's responsibility; no patched
+# version exists. pyjwt is transitive via supabase/storage3 (token verify
+# only); we do not call pyjwt's encryption APIs directly. Re-evaluate if
+# an upstream fix is released or our use of supabase changes.
+AUDIT_IGNORES=(--ignore-vuln PYSEC-2025-183)
 
 echo "→ pip-audit (prod)"
-pip-audit -r requirements.txt
+"$PIPAUDIT_BIN" "${AUDIT_IGNORES[@]}" -r requirements.txt
 
 echo "→ pip-audit (dev)"
-pip-audit -r requirements-dev.txt
+"$PIPAUDIT_BIN" "${AUDIT_IGNORES[@]}" -r requirements-dev.txt
 
 echo "All checks passed."

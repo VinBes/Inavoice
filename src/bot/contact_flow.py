@@ -109,6 +109,13 @@ _STEPS: tuple[_Step, ...] = (
         required=False,
         validate=_validate_rate,
     ),
+    _Step(
+        "aliases",
+        "Any alternate names or spoken variants for this client? "
+        "Comma-separated, e.g. `AER, Aesthetic Radio, aesthetic`. "
+        "Type `skip` if none.",
+        required=False,
+    ),
 )
 
 
@@ -302,6 +309,7 @@ _EDITABLE_FIELDS: tuple[str, ...] = (
     "default_description",
     "default_service_description",
     "default_rate",
+    "aliases",
 )
 
 
@@ -315,6 +323,12 @@ def _step_by_field(field: str) -> _Step:
 
 def _format_current_value(field: str, value: object) -> str:
     """Render the current value of a field for the 'Current X: ...' prompt."""
+    if field == "aliases":
+        if not value:
+            return "(not set)"
+        if isinstance(value, list):
+            return ", ".join(value)
+        return str(value)
     if value in (None, ""):
         return "(not set)"
     if field == "default_rate":

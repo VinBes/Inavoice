@@ -44,8 +44,12 @@ services:
 ### Running Locally
 
 ```bash
-# Start services
+# Start services (prod-shaped — no test fixtures mounted)
 docker compose up
+
+# Start services for MOCK_MODE smoke testing (mounts ./tests so the
+# Claude API fixture matcher in src/services/llm_parser.py can find them)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 # Stop services
 docker compose down
@@ -53,6 +57,14 @@ docker compose down
 # Rebuild after dependency changes
 docker compose build --no-cache
 ```
+
+The base `docker-compose.yml` mirrors what Railway runs in production: no
+test fixtures are mounted, so `MOCK_MODE=true` will fail to find fixtures
+(by design — keeps the compose file honest about prod shape). For local
+smoke testing of `MOCK_MODE` flows, use the dev overlay above. See
+`docker-compose.dev.yml` for the rationale and the fail-closed startup
+guard in `src/config.py` that prevents `MOCK_MODE=true` from running in
+`DEPLOY_ENV=prod` regardless.
 
 ### Hot Reload
 
@@ -103,7 +115,11 @@ Each fixture is a real API response captured once and reused. To refresh fixture
 
 ### Development workflow
 
-1. Run everything locally: `docker compose up`
+1. Run everything locally for MOCK_MODE smoke testing:
+   `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`
+   (The dev overlay mounts `./tests` so fixture lookup works. Plain
+   `docker compose up` deliberately omits it — that compose file mirrors
+   the prod-shape image, where `tests/` is excluded.)
 2. Develop and test with `MOCK_MODE=true` (zero API costs)
 3. When testing prompt changes or new edge cases, set `MOCK_MODE=false` briefly, capture new fixtures, then switch back
 4. Run `pytest` (always uses mocks regardless of MOCK_MODE)
@@ -307,7 +323,8 @@ CREATE TABLE contacts (
   email TEXT,
   default_description TEXT,
   default_service_description TEXT,
-  default_rate NUMERIC
+  default_rate NUMERIC,
+  aliases TEXT NOT NULL DEFAULT ''
 );
 
 -- Invoices (metadata + storage reference)
@@ -330,6 +347,11 @@ CREATE TABLE invoices (
 -- Migration for existing deployments (the column was added after the initial
 -- schema). Safe to run multiple times — IF NOT EXISTS skips when present.
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS last_resent_at TIMESTAMPTZ;
+
+-- Migration: contacts.aliases (added 2026-05-20). Comma-separated spoken
+-- variants fed into the LLM prompt and the MOCK_MODE fixture matcher.
+-- Migration name: add_aliases_to_contacts. Idempotent.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS aliases TEXT NOT NULL DEFAULT '';
 
 -- Resend delivery-status tracking (added 2026-05-08). Migration name:
 -- add_email_delivery_columns_to_invoices. Idempotent.

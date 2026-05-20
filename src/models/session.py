@@ -8,7 +8,7 @@ GENERATING = "GENERATING"
 COMPLETE = "COMPLETE"
 CANCELLED = "CANCELLED"
 
-SessionMode = Literal["invoice", "add_contact", "edit_contact"]
+SessionMode = Literal["invoice", "add_contact", "edit_contact", "fill_missing"]
 
 
 def _now() -> datetime:

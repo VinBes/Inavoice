@@ -1,0 +1,17 @@
+# Local-dev overlay. Use ONLY in combination with docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Adds a read-only mount of ./tests so MOCK_MODE can find its Claude API
+# fixtures at runtime. The image itself excludes `tests/` (.dockerignore
+# line 31) to keep prod lean — this overlay only patches the dev container.
+#
+# Railway uses the Dockerfile directly, NOT docker-compose, so this overlay
+# can never reach production. Belt-and-suspenders: src/config.py raises
+# RuntimeError at import time if MOCK_MODE=true AND DEPLOY_ENV=prod, so
+# even an accidental leak of the fixtures would fail-closed at startup.
+
+services:
+  bot:
+    volumes:
+      - ./tests:/app/tests:ro

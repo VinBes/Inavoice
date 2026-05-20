@@ -45,6 +45,26 @@ def contact_delete_confirm_keyboard(client_id: str) -> InlineKeyboardMarkup:
     ]])
 
 
+def pick_client_keyboard(contacts: list) -> InlineKeyboardMarkup:
+    """One button per known contact for the "Did you mean X?" prompt.
+
+    Callback data format: ``pick_client:<client_id>``. The trailing
+    ``pick_client:__none__`` button lets the user dismiss the prompt and
+    re-state the invoice from scratch.
+    """
+    buttons = [
+        [InlineKeyboardButton(
+            f"{c.display_name} ({c.client_id})",
+            callback_data=f"pick_client:{c.client_id}",
+        )]
+        for c in contacts
+    ]
+    buttons.append([
+        InlineKeyboardButton("None of these", callback_data="pick_client:__none__"),
+    ])
+    return InlineKeyboardMarkup(buttons)
+
+
 def contact_field_picker_keyboard() -> InlineKeyboardMarkup:
     """Field picker for /contacts edit. One button per editable field, plus Done.
 
@@ -75,6 +95,9 @@ def contact_field_picker_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 "Default rate", callback_data="contact_edit_field:default_rate"
             ),
+        ],
+        [
+            InlineKeyboardButton("Aliases", callback_data="contact_edit_field:aliases"),
         ],
         [
             InlineKeyboardButton("Done", callback_data="contact_edit_done"),

@@ -27,7 +27,11 @@ from bot.contact_flow import (
     handle_contact_edit_message,
 )
 from bot.formatting import format_confirmation
-from bot.keyboards import confirm_keyboard
+from bot.keyboards import confirm_keyboard, pick_client_keyboard
+from bot.missing_field_flow import (
+    _start_missing_field_flow,
+    handle_missing_field_message,
+)
 from db.contacts import get_contact, list_contacts
 from db.invoices import list_recent_invoices, update_email_id
 from models.schemas import Contact, LLMOutput
@@ -111,6 +115,19 @@ def _augment_missing_fields(result: LLMOutput, contact: Contact | None) -> list[
     return needs
 
 
+_GREETING_TOKENS: frozenset[str] = frozenset({
+    "hi", "hello", "hey", "yo", "sup", "howdy",
+    "good morning", "good afternoon", "good evening", "good day",
+    "hiya", "greetings",
+})
+
+
+def _is_greeting(text: str) -> bool:
+    """Return True if the entire message is a bare greeting with no invoice content."""
+    normalized = text.lower().strip().rstrip("!.,?")
+    return normalized in _GREETING_TOKENS
+
+
 _HELP_TEXT = (
     f"Inavoice — voice-to-invoice bot. (env: {config.DEPLOY_ENV})\n\n"
     "Send an invoice description as text (dictate via Wispr Flow on device "
@@ -131,10 +148,7 @@ _HELP_TEXT = (
 )
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _auth(update.effective_chat.id):
-        return
-    contacts = await list_contacts()
+async def _build_start_message(contacts) -> str:
     lines = [
         f"👋 Inavoice ready. (env: {config.DEPLOY_ENV})",
         "",
@@ -150,7 +164,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             lines.append(f"  • {c.client_id} → {c.display_name}")
         lines.append("")
     lines.append("Type /help for the full command list.")
-    await update.message.reply_text("\n".join(lines))
+    return "\n".join(lines)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _auth(update.effective_chat.id):
+        return
+    contacts = await list_contacts()
+    await update.message.reply_text(await _build_start_message(contacts))
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -306,8 +327,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     text = update.message.text.strip()
-    session = _sessions.get(chat_id)
+    existing_session = _sessions.get(chat_id)
 
+    # Greeting short-circuit: no active session + bare greeting → /start response
+    if (existing_session is None or existing_session.state in (COMPLETE, CANCELLED)) and _is_greeting(text):
+        contacts = await list_contacts()
+        await update.message.reply_text(await _build_start_message(contacts))
+        return
+
+    session = existing_session
     if session is None or session.state in (COMPLETE, CANCELLED):
         session = Session()
         _sessions[chat_id] = session
@@ -324,6 +352,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if session.mode == "edit_contact":
         await handle_contact_edit_message(update, context, session, chat_id)
+        return
+
+    if session.mode == "fill_missing":
+        await handle_missing_field_message(update, context, session, chat_id)
         return
 
     contacts = await list_contacts()
@@ -362,7 +394,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if result.client_id is not None:
         contact = await get_contact(result.client_id)
         if contact is None:
-            session.parsed_data = result.model_dump()
+            session.parsed_data = result.model_dump(mode="json")
             await update.message.reply_text(
                 "I don't recognize that client. Which client should this be for?"
             )
@@ -371,14 +403,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     augmented = _augment_missing_fields(result, contact)
     result.missing_fields = augmented
-    session.parsed_data = result.model_dump()
+    session.parsed_data = result.model_dump(mode="json")
+
+    if augmented == ["client_id"]:
+        # Only the client_id is missing — show a quick-reply picker rather than
+        # forcing the user to retype the client. The "fill_missing" flow can
+        # still pick this up if the picked contact reveals other missing fields.
+        msg = await update.message.reply_text(
+            "I didn't recognise the client. Who is this invoice for?",
+            reply_markup=pick_client_keyboard(contacts),
+        )
+        session.message_id = msg.message_id
+        _reset_timeout(chat_id, context)
+        return
 
     if augmented:
-        fields = ", ".join(augmented)
-        await update.message.reply_text(
-            f"I need a few more details: {fields}. Please provide them."
-        )
-        _reset_timeout(chat_id, context)
+        await _start_missing_field_flow(update.message, context, session, chat_id, augmented)
         return
 
     try:
@@ -576,6 +616,72 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
         await query.answer()
         await _execute_contact_delete_cancel(query, session, chat_id, context)
+
+    elif cb.startswith("pick_client:"):
+        await query.answer()
+        if session is None or session.state != PENDING:
+            return
+        chosen_id = cb.split(":", 1)[1]
+        if chosen_id == "__none__":
+            await query.edit_message_text(
+                "No client selected. Please send the invoice again with the client name."
+            )
+            _sessions.pop(chat_id, None)
+            log.info("pick_client.cancelled", chat_id=chat_id)
+            return
+
+        contact = await get_contact(chosen_id)
+        if contact is None:
+            await query.edit_message_text(
+                f"Contact {chosen_id!r} no longer exists. Please start over."
+            )
+            _sessions.pop(chat_id, None)
+            return
+
+        # Patch the chosen client_id into the stashed LLM output and re-run the
+        # augment logic. If other fields are still missing, hand off to the
+        # sequential missing-field flow; otherwise show the confirmation card.
+        parsed = dict(session.parsed_data or {})
+        parsed["client_id"] = chosen_id
+        session.parsed_data = parsed
+        try:
+            result = LLMOutput.model_validate(parsed)
+        except Exception:
+            log.exception("pick_client.parse_failed", chat_id=chat_id, client_id=chosen_id)
+            await query.edit_message_text(
+                "Something went wrong reading the stashed invoice draft. Please start over."
+            )
+            _sessions.pop(chat_id, None)
+            return
+
+        augmented = _augment_missing_fields(result, contact)
+        result.missing_fields = augmented
+        session.parsed_data = result.model_dump(mode="json")
+
+        if augmented:
+            await _start_missing_field_flow(query.message, context, session, chat_id, augmented)
+            log.info(
+                "pick_client.continued_to_fill_missing",
+                chat_id=chat_id, client_id=chosen_id, remaining=augmented,
+            )
+            return
+
+        try:
+            data = merge_and_compute(result, contact)
+        except ValueError as e:
+            await query.edit_message_text(str(e))
+            _sessions.pop(chat_id, None)
+            return
+
+        session.computed_data = data
+        has_email = bool(data.get("email"))
+        msg = await query.message.reply_text(
+            format_confirmation(data),
+            reply_markup=confirm_keyboard(has_email),
+        )
+        session.message_id = msg.message_id
+        _reset_timeout(chat_id, context)
+        log.info("pick_client.selected", chat_id=chat_id, client_id=chosen_id)
 
 
 def _fmt_amount(value) -> str:
