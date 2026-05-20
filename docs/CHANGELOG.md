@@ -8,6 +8,24 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-21 — Upgrade transitive deps; ignore disputed pyjwt advisory
+
+- Regenerated `requirements.txt` and `requirements-dev.txt` via
+  `pip-compile --upgrade` to clear three pre-existing pip-audit findings:
+  `idna 3.11/3.13 → 3.15` (CVE-2026-45409), `urllib3 2.6.3 → 2.7.0`
+  (PYSEC-2026-141, PYSEC-2026-142).
+- `pyjwt 2.12.1 PYSEC-2025-183` (CVE-2025-45768) has no upstream fix and
+  is disputed — maintainers argue key strength is the caller's
+  responsibility. pyjwt is transitive via `supabase` → `storage3` for
+  token verification only; we never call pyjwt's encryption APIs
+  directly. Suppressed in `hooks/pre-push` via `--ignore-vuln
+  PYSEC-2025-183` with a comment pointing at the dispute. Re-evaluate if
+  an upstream fix lands or our use of supabase changes.
+- `hooks/pre-push` simultaneously made venv-aware (calls
+  `./.venv/bin/pytest` / `./.venv/bin/pip-audit` so it works when the
+  developer's shell doesn't have the venv activated, which is the case
+  during `git push`).
+
 ## 2026-05-20 — Split docker-compose for MOCK_MODE smoke testing
 
 - The base `docker-compose.yml` is now prod-shaped: it mounts only `./src`

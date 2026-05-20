@@ -14,10 +14,17 @@ PIPAUDIT_BIN="${PIPAUDIT_BIN:-./.venv/bin/pip-audit}"
 echo "→ pytest"
 "$PYTEST_BIN"
 
+# PYSEC-2025-183 (pyjwt < no fix) — disputed advisory (CVE-2025-45768).
+# Maintainers argue key strength is the caller's responsibility; no patched
+# version exists. pyjwt is transitive via supabase/storage3 (token verify
+# only); we do not call pyjwt's encryption APIs directly. Re-evaluate if
+# an upstream fix is released or our use of supabase changes.
+AUDIT_IGNORES=(--ignore-vuln PYSEC-2025-183)
+
 echo "→ pip-audit (prod)"
-"$PIPAUDIT_BIN" -r requirements.txt
+"$PIPAUDIT_BIN" "${AUDIT_IGNORES[@]}" -r requirements.txt
 
 echo "→ pip-audit (dev)"
-"$PIPAUDIT_BIN" -r requirements-dev.txt
+"$PIPAUDIT_BIN" "${AUDIT_IGNORES[@]}" -r requirements-dev.txt
 
 echo "All checks passed."
