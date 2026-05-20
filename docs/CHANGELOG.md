@@ -8,6 +8,26 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-20 — Split docker-compose for MOCK_MODE smoke testing
+
+- The base `docker-compose.yml` is now prod-shaped: it mounts only `./src`
+  and matches the image's actual filesystem (which excludes `tests/` via
+  `.dockerignore`). Plain `docker compose up` will therefore make
+  `MOCK_MODE=true` fail to find fixtures — by design, so the compose file
+  stays honest about prod shape.
+- New `docker-compose.dev.yml` adds a read-only `./tests:/app/tests:ro`
+  mount as an overlay. MOCK_MODE smoke testing requires running with both
+  files: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`.
+- Discovered during PB3 smoke testing: MOCK_MODE in docker-compose had been
+  silently broken since the fixture loader was added (fixtures live in
+  `tests/`, image excludes `tests/`, no mount existed). Pytest never hit
+  this because pytest runs from the host with `tests/` in the working
+  tree. The startup guard in `src/config.py` (RuntimeError when
+  `MOCK_MODE=true` AND `DEPLOY_ENV=prod`) remains the actual safety net
+  against MOCK_MODE leaking into production regardless.
+- `docs/deployment.md` and `CLAUDE.md` updated to document the two
+  commands.
+
 ## 2026-05-20 — Contacts gain `aliases` column (Polish Batch 3 part 1)
 
 - **`contacts.aliases TEXT NOT NULL DEFAULT ''`** added. Stored as a

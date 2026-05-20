@@ -122,7 +122,8 @@ These are hard rules. Never violate them regardless of context.
 
 | Task | Command |
 |------|---------|
-| Run locally | `docker compose up` |
+| Run locally (prod-shaped, no test fixtures mounted) | `docker compose up` |
+| Run locally for MOCK_MODE smoke testing | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up` |
 | Recompile prod lockfile | `docker run --rm -v "$(pwd):/app" -w /app python:3.13-slim sh -c "pip install pip-tools && pip-compile --generate-hashes --allow-unsafe --output-file=requirements.txt requirements.in"` |
 | Recompile dev lockfile | `docker run --rm -v "$(pwd):/app" -w /app python:3.13-slim sh -c "pip install pip-tools && pip-compile --generate-hashes --allow-unsafe --output-file=requirements-dev.txt requirements-dev.in"` |
 | Security audit (required before push) | `pip-audit -r requirements.txt && pip-audit -r requirements-dev.txt` |
