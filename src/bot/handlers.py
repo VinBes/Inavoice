@@ -111,6 +111,19 @@ def _augment_missing_fields(result: LLMOutput, contact: Contact | None) -> list[
     return needs
 
 
+_GREETING_TOKENS: frozenset[str] = frozenset({
+    "hi", "hello", "hey", "yo", "sup", "howdy",
+    "good morning", "good afternoon", "good evening",
+    "hiya", "greetings",
+})
+
+
+def _is_greeting(text: str) -> bool:
+    """Return True if the entire message is a bare greeting with no invoice content."""
+    normalized = text.lower().strip().rstrip("!.,?")
+    return normalized in _GREETING_TOKENS
+
+
 _HELP_TEXT = (
     f"Inavoice — voice-to-invoice bot. (env: {config.DEPLOY_ENV})\n\n"
     "Send an invoice description as text (dictate via Wispr Flow on device "
@@ -131,10 +144,7 @@ _HELP_TEXT = (
 )
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _auth(update.effective_chat.id):
-        return
-    contacts = await list_contacts()
+async def _build_start_message(contacts) -> str:
     lines = [
         f"👋 Inavoice ready. (env: {config.DEPLOY_ENV})",
         "",
@@ -150,7 +160,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             lines.append(f"  • {c.client_id} → {c.display_name}")
         lines.append("")
     lines.append("Type /help for the full command list.")
-    await update.message.reply_text("\n".join(lines))
+    return "\n".join(lines)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _auth(update.effective_chat.id):
+        return
+    contacts = await list_contacts()
+    await update.message.reply_text(await _build_start_message(contacts))
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -306,8 +323,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     text = update.message.text.strip()
-    session = _sessions.get(chat_id)
+    existing_session = _sessions.get(chat_id)
 
+    # Greeting short-circuit: no active session + bare greeting → /start response
+    if (existing_session is None or existing_session.state in (COMPLETE, CANCELLED)) and _is_greeting(text):
+        contacts = await list_contacts()
+        await update.message.reply_text(await _build_start_message(contacts))
+        return
+
+    session = existing_session
     if session is None or session.state in (COMPLETE, CANCELLED):
         session = Session()
         _sessions[chat_id] = session
