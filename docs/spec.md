@@ -59,10 +59,17 @@ A Telegram bot that reduces invoicing to a single voice command with a confirmat
 1. User dictates using Wispr Flow → transcribed text sent as Telegram message
 2. Claude API parses text → structured JSON (see llm-parsing-spec.md)
 3. Backend validates output, merges client defaults, computes derived fields
-4. If missing required fields → bot asks for all missing fields in a single message.
-   User responds via text. Response goes through correction-mode LLM parsing
-   with previous data as context. Session remains in PENDING throughout — this is a
-   sub-loop, not a new state.
+4. If missing required fields → bot first sends a rich human-readable
+   OVERVIEW message that maps each missing field to where it appears on the
+   invoice (header line, Service column, Rate column, recipient block) plus
+   an example value. The session switches to `mode="fill_missing"` and the
+   bot then asks ONE field per message. Each reply is the raw value for the
+   current field, validated locally (positive Decimal for `rate`, contacts
+   lookup for `client_id`) — no LLM call per answer. Extra information typed
+   alongside the value is ignored; failed validation re-prompts the same
+   field. After the last field is collected the bot shows the confirmation
+   card. The correction-mode LLM loop applies only to [Edit] taps on the
+   confirmation card and to unknown-client recovery.
 6. Bot sends confirmation message:
 
    ```
@@ -236,7 +243,7 @@ class Session:
 | Validation fails | Bot names the problematic field, asks to re-state or restart | Checks: client exists, amounts > 0, date ≤ 90 days future |
 | PDF generation fails | "Failed to generate the PDF. This is a system error — try again." | Log stack trace. This is a bug signal. |
 | Email fails | "Invoice generated but email failed to send. Here's your PDF." | Send PDF via Telegram. Log error. No auto-retry. |
-| Unknown client | "I don't recognize that client. Which client should this be for?" | LLM sets client_id null; backend confirms non-existence. |
+| Unknown client | "I don't recognize that client. Which client should this be for?" | Shows inline list of known contacts as quick-reply buttons (Did you mean X?). LLM sets client_id null; backend confirms non-existence. |
 | Session timeout | "Your invoice session has expired. Please start over." | Auto-cancel after 30 min. Clean up session. |
 | Daily API cap | "Daily limit reached, try again tomorrow." | Block until midnight HKT. |
 | Session LLM cap | "Too many corrections — please cancel and start over." | No further LLM calls for this session. |

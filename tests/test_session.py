@@ -436,8 +436,12 @@ async def test_3_9_handler_does_not_augment_when_default_description_present():
 
 
 # ---------------------------------------------------------------------------
-# Test 3.10 — Re-prompt loop closes when user supplies the missing field
+# Test 3.10 — Sequential missing-field flow closes on user-supplied value
 # Regression for STATUS.md bug "Re-prompt loop wedges after user answers".
+# The original bug lived in the LLM-correction loop. PB3-3 replaced that loop
+# with a local sequential step machine — this test now guards the new shape:
+# the OVERVIEW message goes out on the first turn, and the user's plain reply
+# fills the field and advances to the confirmation card without re-asking.
 # ---------------------------------------------------------------------------
 
 async def test_3_10_reprompt_loop_closes_when_user_provides_missing_field():
@@ -468,43 +472,44 @@ async def test_3_10_reprompt_loop_closes_when_user_provides_missing_field():
         )],
         missing_fields=[],
     )
-    second_result = LLMOutput(
-        client_id="client_no_defaults",
-        description="DJ services",
-        line_items=[LLMLineItem(
-            service_date="26/03/2026",
-            service_description="Some service",
-            time_start="22:00",
-            time_end="00:00",
-            rate=500,
-            rate_type="hourly",
-            total=None,
-        )],
-        missing_fields=[],
-    )
 
     ctx = _make_context()
 
     with (
+        # Only the first message hits the LLM; the second is a direct local
+        # assignment by handle_missing_field_message — no parse_invoice_text call.
         patch(
             "bot.handlers.parse_invoice_text",
-            side_effect=[first_result, second_result],
+            side_effect=[first_result],
         ),
         patch("bot.handlers.get_contact", return_value=contact),
         patch("bot.handlers.list_contacts", return_value=[contact]),
-        patch("bot.handlers.merge_and_compute", return_value=_COMPUTED_DATA),
+        # merge_and_compute + get_contact are invoked from bot.missing_field_flow
+        # on the last field — patch at the import sites there.
+        patch(
+            "bot.missing_field_flow.merge_and_compute",
+            return_value=_COMPUTED_DATA,
+        ),
+        patch(
+            "bot.missing_field_flow.get_contact",
+            return_value=contact,
+        ),
     ):
-        # First message: bot re-prompts for description
+        # First message: bot shows the missing-field overview + asks for description.
         update1 = _make_message_update("invoice for client no defaults")
         await handle_message(update1, ctx)
         reply1 = update1.message.reply_text.call_args[0][0]
         assert "description" in reply1
         assert "more details" in reply1
+        assert _sessions[_CHAT_ID].mode == "fill_missing"
 
-        # Second message: user supplies the description; bot now shows confirmation
+        # Second message: user supplies the description as a bare reply.
+        # The new flow assigns it locally (no LLM call) and shows the
+        # confirmation card. The bug this guards against would have re-asked.
         update2 = _make_message_update("DJ services")
         await handle_message(update2, ctx)
         reply2 = update2.message.reply_text.call_args[0][0]
         assert "more details" not in reply2
 
     assert _sessions[_CHAT_ID].computed_data is not None
+    assert _sessions[_CHAT_ID].mode == "invoice"
