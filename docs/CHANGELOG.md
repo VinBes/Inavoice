@@ -8,6 +8,22 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-21 — Railway webhook diagnostic (no-op)
+
+- After PR #25 merged, Railway's auto-deploy did not pick up the merge —
+  it remained on PR #24's commit. Likely cause: the Railway trial
+  expired between the PR #24 and PR #25 merges, and the
+  GitHub App webhook delivery to Railway went stale across the
+  trial-to-hobby transition. Manual redeploy from the Railway dashboard
+  also picked up PR #24, confirming Railway's view of "latest on main"
+  was outdated.
+- This entry is intentional churn — opening + merging a trivial PR with
+  this changelog note triggers a fresh `push` webhook event so we can
+  verify whether Railway picks it up. If a deployment fires within ~30
+  seconds of the merge, the webhook is healthy and the original miss
+  was a trial-end blip. If not, the GitHub App needs reconnecting on
+  the Railway side.
+
 ## 2026-05-21 — Upgrade transitive deps; ignore disputed pyjwt advisory
 
 - Regenerated `requirements.txt` and `requirements-dev.txt` via
