@@ -3,13 +3,21 @@ set -e
 
 echo "Running pre-push checks..."
 
+# Use the project venv binaries explicitly so the hook works regardless of
+# whether the user's shell has the venv activated. Falls back to PATH only
+# if the venv binary is absent (e.g. CI environment where deps are global).
+PYTEST_BIN="${PYTEST_BIN:-./.venv/bin/pytest}"
+PIPAUDIT_BIN="${PIPAUDIT_BIN:-./.venv/bin/pip-audit}"
+[[ -x "$PYTEST_BIN"   ]] || PYTEST_BIN=pytest
+[[ -x "$PIPAUDIT_BIN" ]] || PIPAUDIT_BIN=pip-audit
+
 echo "→ pytest"
-pytest
+"$PYTEST_BIN"
 
 echo "→ pip-audit (prod)"
-pip-audit -r requirements.txt
+"$PIPAUDIT_BIN" -r requirements.txt
 
 echo "→ pip-audit (dev)"
-pip-audit -r requirements-dev.txt
+"$PIPAUDIT_BIN" -r requirements-dev.txt
 
 echo "All checks passed."
