@@ -28,6 +28,10 @@ from bot.contact_flow import (
 )
 from bot.formatting import format_confirmation
 from bot.keyboards import confirm_keyboard
+from bot.missing_field_flow import (
+    _start_missing_field_flow,
+    handle_missing_field_message,
+)
 from db.contacts import get_contact, list_contacts
 from db.invoices import list_recent_invoices, update_email_id
 from models.schemas import Contact, LLMOutput
@@ -326,6 +330,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_contact_edit_message(update, context, session, chat_id)
         return
 
+    if session.mode == "fill_missing":
+        await handle_missing_field_message(update, context, session, chat_id)
+        return
+
     contacts = await list_contacts()
     try:
         result = await parse_invoice_text(
@@ -374,11 +382,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     session.parsed_data = result.model_dump()
 
     if augmented:
-        fields = ", ".join(augmented)
-        await update.message.reply_text(
-            f"I need a few more details: {fields}. Please provide them."
-        )
-        _reset_timeout(chat_id, context)
+        await _start_missing_field_flow(update.message, context, session, chat_id, augmented)
         return
 
     try:

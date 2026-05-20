@@ -8,6 +8,21 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-20 — Sequential missing-field collection (deviation from spec §3 step 4)
+
+- Missing-field collection switched from a single flat message ("I need a
+  few more details: description, rate. Please provide them.") to a
+  sequential per-field flow. The bot first sends a rich OVERVIEW message
+  mapping each missing field to where it appears on the invoice plus an
+  example, then asks ONE field per message.
+- Answers are validated locally (no LLM call per answer): positive Decimal
+  for `rate`, contacts existence for `client_id`. Extra information typed
+  alongside the value is ignored — the user can refine further via [Edit]
+  on the confirmation card.
+- New `Session.mode = "fill_missing"`; logic lives in
+  `src/bot/missing_field_flow.py`. The LLM correction loop now applies only
+  to [Edit] taps and unknown-client recovery.
+
 ## 2026-05-08 — Startup guard: MOCK_MODE forbidden when DEPLOY_ENV=prod
 
 - `src/config.py` now raises `RuntimeError` at import time if
