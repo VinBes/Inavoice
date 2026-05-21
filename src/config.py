@@ -5,6 +5,12 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALLOWED_CHAT_IDS = [int(x) for x in os.getenv("ALLOWED_CHAT_IDS", "").split(",") if x.strip()]
+if not ALLOWED_CHAT_IDS:
+    raise RuntimeError(
+        "ALLOWED_CHAT_IDS is empty or unset — the bot would silently reject "
+        "all messages. Set ALLOWED_CHAT_IDS to a comma-separated list of "
+        "Telegram chat IDs in the environment."
+    )
 
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 
@@ -35,7 +41,7 @@ SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 
 HEALTH_PORT = int(os.getenv("HEALTH_PORT", "8080"))
 
-MOCK_MODE = os.getenv("MOCK_MODE", "true").lower() == "true"
+MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
 
 # Deployment environment label, surfaced in /start and /help so the user can
 # tell at a glance which bot instance they're talking to (local docker compose

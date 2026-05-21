@@ -13,5 +13,7 @@
 
 services:
   bot:
+    environment:
+      MOCK_MODE: "true"
     volumes:
       - ./tests:/app/tests:ro
