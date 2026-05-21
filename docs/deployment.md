@@ -10,7 +10,7 @@
 
 - Docker and Docker Compose installed
 - Python 3.11+
-- A Telegram bot token (from @BotFather)
+- Two Telegram bot tokens (from @BotFather) — one for local dev, one for production. See [Dev and production bots](#dev-and-production-bots) below for the why.
 - API keys for Claude (Anthropic), Resend
 - A Supabase project (free tier)
 
@@ -188,6 +188,7 @@ HEALTH_PORT=8080
 
 # === Development ===
 MOCK_MODE=true
+DEPLOY_ENV=local  # `local` for dev, `prod` on Railway; controls /start banner label and blocks MOCK_MODE in prod
 ```
 
 ### Security Rules
@@ -196,6 +197,30 @@ MOCK_MODE=true
 - `.env.example` is committed — contains key names only, no values
 - All PII (bank details, addresses) live exclusively in `.env`
 - No secrets in Docker images — passed at runtime via env vars
+
+---
+
+## Dev and production bots
+
+This project assumes **two separate Telegram bots** — one for local development, one for production — each with its own token issued by @BotFather. The dev bot's token lives in your local `.env`; the production bot's token lives in Railway's environment variables. They are never used interchangeably.
+
+### Why two bots
+
+- **Telegram only allows one poller per token at a time.** If both your laptop and Railway are running against the same token, they will fight for updates and you'll see messages go missing on either side. Two tokens, two bots, no conflict.
+- **You can smoke-test against the real Telegram API without polluting production state.** Sending `/start` to your dev bot doesn't show up in production logs, doesn't trigger production webhooks, and doesn't risk emailing a real client during a test.
+- **`ALLOWED_CHAT_IDS` is enforced per-bot,** so even if someone discovers your dev bot they can't use it — but you also don't want production handlers responding to test traffic.
+
+### Setting it up
+
+1. Open Telegram, message `@BotFather`, run `/newbot`, and create a bot for development. Name it something obvious like `inavoice_dev_bot`. Save the token.
+2. Repeat: run `/newbot` again and create a separate production bot. Save that token too.
+3. In your local `.env`: set `TELEGRAM_BOT_TOKEN` to the **dev** token and `DEPLOY_ENV=local`.
+4. In Railway's environment variables: set `TELEGRAM_BOT_TOKEN` to the **production** token and `DEPLOY_ENV=prod`.
+5. Confirm by sending `/start` to each bot. The reply banner includes the `DEPLOY_ENV` label, so you can tell them apart at a glance.
+
+### Hard rule
+
+Never run two pollers against the same token. If you're running `docker compose up` locally with the production token while Railway is also deployed, you will lose messages. Use two tokens.
 
 ---
 
