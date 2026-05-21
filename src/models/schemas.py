@@ -8,6 +8,8 @@ _DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _CLIENT_ID_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_PHONE_RE = re.compile(r"^\+[\d\s\-]{6,}$")
+_TELEGRAM_RE = re.compile(r"^@[A-Za-z0-9_]{4,32}$")
 
 
 class LLMLineItem(BaseModel):
@@ -47,6 +49,8 @@ class Contact(BaseModel):
     address: str
     contact_person: Optional[str] = None
     email: Optional[str] = None
+    phone: Optional[str] = None
+    telegram_handle: Optional[str] = None
     default_description: Optional[str] = None
     default_service_description: Optional[str] = None
     default_rate: Optional[Decimal] = None
@@ -66,6 +70,35 @@ class Contact(BaseModel):
     def _email_format(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and not _EMAIL_RE.match(v):
             raise ValueError("email must look like name@domain.tld")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def _phone_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not _PHONE_RE.match(v):
+            raise ValueError(
+                "phone must start with `+` and country code, e.g. `+852 6900 3561`"
+            )
+        return v
+
+    @field_validator("telegram_handle")
+    @classmethod
+    def _telegram_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not _TELEGRAM_RE.match(v):
+            raise ValueError(
+                "telegram_handle must start with `@` and be 5–33 chars total "
+                "(letters, digits, underscores), e.g. `@username`"
+            )
         return v
 
     @field_validator("default_rate")

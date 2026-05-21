@@ -67,6 +67,8 @@ def format_contact_summary(draft: dict) -> str:
         f"Address: {draft.get('address', '?')}",
         f"Contact person: {_opt('contact_person')}",
         f"Email: {_opt('email')}",
+        f"Phone: {_opt('phone')}",
+        f"Telegram: {_opt('telegram_handle')}",
         f"Default description: {_opt('default_description')}",
         f"Default service description: {_opt('default_service_description')}",
         rate_line,

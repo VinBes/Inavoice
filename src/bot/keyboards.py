@@ -82,6 +82,10 @@ def contact_field_picker_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("Email", callback_data="contact_edit_field:email"),
         ],
         [
+            InlineKeyboardButton("Phone", callback_data="contact_edit_field:phone"),
+            InlineKeyboardButton("Telegram", callback_data="contact_edit_field:telegram_handle"),
+        ],
+        [
             InlineKeyboardButton(
                 "Default description",
                 callback_data="contact_edit_field:default_description",
