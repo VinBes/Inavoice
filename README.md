@@ -28,7 +28,7 @@ Python 3.13 · [python-telegram-bot](https://github.com/python-telegram-bot/pyth
 
 ## Running it yourself
 
-You will need accounts with Telegram (BotFather), Anthropic, Supabase, and Resend, plus a domain verified in Resend for outbound email.
+You will need accounts with Telegram (BotFather), Anthropic, Supabase, and Resend, plus a domain verified in Resend for outbound email. Create **two** Telegram bots — one for local development and one for production — and never run both against the same token. See [docs/deployment.md](docs/deployment.md#dev-and-production-bots) for the why and the setup steps.
 
 ```bash
 git clone https://github.com/VinBes/Inavoice.git
