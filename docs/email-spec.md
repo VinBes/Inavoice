@@ -9,15 +9,16 @@
 | Setting | Value |
 |---------|-------|
 | Service | Resend API |
-| From address | invoice@zaraffa.online |
-| Domain | zaraffa.online |
+| From address | `EMAIL_FROM_ADDRESS` env var, e.g. `invoice@yourdomain.com` |
+| Domain | Verified in Resend |
 | Free tier limit | 3,000 emails/month |
 
 ### Environment Variables
 
 ```
 RESEND_API_KEY=
-EMAIL_FROM_ADDRESS=invoice@zaraffa.online
+EMAIL_FROM_ADDRESS=    # required; must be a verified Resend sender, e.g. invoice@yourdomain.com
+SENDER_COMPANY=        # optional; appended below SENDER_NAME in the signature
 ```
 
 ---
@@ -37,8 +38,11 @@ Payment is due by {{DUE_DATE}}. Payment details are included in the invoice.
 
 Kind regards,
 {{SENDER_NAME}}
-Zaraffa
+{{SENDER_COMPANY}}
 ```
+
+If `SENDER_COMPANY` is empty or unset, the company line is omitted and the
+signature is just `{{SENDER_NAME}}`.
 
 ### Template Variables
 
@@ -46,6 +50,7 @@ Zaraffa
 |----------|--------|
 | `{{INVOICE_NUMBER}}` | Generated invoice number (e.g. ZARAFFA26-3) |
 | `{{SENDER_NAME}}` | From env var |
+| `{{SENDER_COMPANY}}` | From env var; optional, omitted when empty |
 | `{{CONTACT_PERSON}}` | From client database (may be null) |
 | `{{DISPLAY_NAME}}` | From client database (fallback if no contact_person) |
 | `{{DUE_DATE}}` | Computed: invoice_date + 14 days, formatted as "DD Month YYYY" |

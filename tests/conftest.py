@@ -12,10 +12,11 @@ _DEFAULTS = {
     "ANTHROPIC_API_KEY": "test-anthropic-key",
     "RESEND_API_KEY": "test-resend-key",
     "RESEND_WEBHOOK_SECRET": "whsec_dGVzdHNlY3JldA==",  # base64("testsecret")
-    "EMAIL_FROM_ADDRESS": "invoice@zaraffa.online",
+    "EMAIL_FROM_ADDRESS": "invoice@example.com",
     "SUPABASE_URL": "https://test.supabase.co",
     "SUPABASE_SERVICE_KEY": "test-service-key",
     "SENDER_NAME": "Test Sender",
+    "SENDER_COMPANY": "Test Company",
     "SENDER_ADDRESS": "Test Address, Test City",
     "ACCOUNT_HOLDER": "Test Holder",
     "BANK_NAME": "Test Bank",

@@ -8,6 +8,30 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-21 — `EMAIL_FROM_ADDRESS` is now required (no default)
+
+- Spec did not mandate a default. Implementation previously fell back to
+  `invoice@zaraffa.online` via `os.getenv(..., "invoice@zaraffa.online")` in
+  `src/config.py`, which meant a forker who unset the var would silently try
+  to send from the original author's domain.
+- Now loaded via `os.environ["EMAIL_FROM_ADDRESS"]` — fails fast at startup
+  if unset, matching how every other identity/secret var is loaded.
+- Updated docs ([deployment.md](deployment.md), [email-spec.md](email-spec.md),
+  [spec.md](spec.md)) to drop the `invoice@zaraffa.online` example and call
+  the var out as required.
+- Driven by the move to a public GitHub repo.
+
+## 2026-05-21 — Email signature company line is now env-driven
+
+- Spec ([docs/email-spec.md](email-spec.md)) showed `Zaraffa` hardcoded as the
+  second signature line. Implementation matched the spec — `email_sender.py`
+  appended the literal string `Zaraffa` after `SENDER_NAME`.
+- Replaced with optional `SENDER_COMPANY` env var. Empty / unset → the company
+  line is omitted and the signature is just `SENDER_NAME`. Spec updated to
+  document the new variable and the omit-when-empty behavior.
+- Driven by the move to a public GitHub repo: forkers should not get the
+  original author's brand baked into their outbound mail.
+
 ## 2026-05-21 — Two configurable logo slots replace single mandatory logo
 
 - Spec ([docs/template-spec.md](template-spec.md)) described one mandatory logo

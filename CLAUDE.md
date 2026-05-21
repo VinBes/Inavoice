@@ -18,7 +18,7 @@
 | PDF generation | WeasyPrint (HTML/CSS → PDF) + Jinja2 (templating) |
 | Database | Supabase (free tier PostgreSQL) |
 | File storage | Supabase Storage |
-| Email | Resend (from invoice@zaraffa.online) |
+| Email | Resend (sender configured via `EMAIL_FROM_ADDRESS`) |
 | Hosting | Railway (hobby tier, ~$5-7/month) |
 | Containerization | Docker + Docker Compose |
 | Version control | Git + GitHub |
