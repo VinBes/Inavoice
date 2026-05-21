@@ -82,7 +82,7 @@ class Contact(BaseModel):
             return None
         if not _PHONE_RE.match(v):
             raise ValueError(
-                "phone must start with `+` and country code, e.g. `+852 6900 3561`"
+                "phone must start with `+` and country code, e.g. `+852 1234 5678`"
             )
         return v
 

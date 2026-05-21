@@ -30,7 +30,8 @@ BANK_ACCOUNT = os.environ["BANK_ACCOUNT"]
 FPS_ID = os.environ["FPS_ID"]
 BUSINESS_REGISTRATION = os.getenv("BUSINESS_REGISTRATION", "")
 
-LOGO_PATH = os.getenv("LOGO_PATH", "assets/vence-zaraffa-logo.png")
+LOGO_LEFT_PATH = os.getenv("LOGO_LEFT_PATH", "")
+LOGO_RIGHT_PATH = os.getenv("LOGO_RIGHT_PATH", "assets/example-logo.png")
 
 DAILY_CLAUDE_API_CAP = int(os.getenv("DAILY_CLAUDE_API_CAP", "20"))
 SESSION_LLM_CALL_CAP = int(os.getenv("SESSION_LLM_CALL_CAP", "5"))

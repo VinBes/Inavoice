@@ -105,7 +105,7 @@ _STEPS: tuple[_Step, ...] = (
     ),
     _Step(
         "phone",
-        "Phone number? Include country code, e.g. `+852 6900 3561`. Type `skip` if none.",
+        "Phone number? Include country code, e.g. `+852 1234 5678`. Type `skip` if none.",
         required=False,
         validate=_validate_phone,
     ),

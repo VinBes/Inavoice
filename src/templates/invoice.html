@@ -38,6 +38,10 @@
       vertical-align: top;
       padding-bottom: 6pt;
     }
+    .header-logo-left img {
+      height: 72pt;
+      display: block;
+    }
     .header-logo-right img {
       height: 72pt;
       display: block;
@@ -154,9 +158,11 @@
 
 <table class="page-header">
   <tr>
-    <td class="header-logo-left"></td>
+    <td class="header-logo-left">
+      {% if logo_left_path %}<img src="{{ logo_left_path }}" alt="">{% endif %}
+    </td>
     <td class="header-logo-right">
-      <img src="assets/vence-zaraffa-logo.png" alt="">
+      {% if logo_right_path %}<img src="{{ logo_right_path }}" alt="">{% endif %}
     </td>
   </tr>
   <tr>

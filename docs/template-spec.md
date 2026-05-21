@@ -72,7 +72,8 @@ These values are stored in environment variables or a config file (never hardcod
 |-------|-------------|-------------|
 | Sender name | `{{SENDER_NAME}}` | Invoice issuer's full name |
 | Sender address | `{{SENDER_ADDRESS}}` | Multi-line postal address |
-| Logo | `{{LOGO_PATH}}` | Path to VENCE + ZARAFFA dual logo image file |
+| Left logo | `{{LOGO_LEFT_PATH}}` | Optional. Path to left-header logo image, relative to `src/`. Empty → slot renders empty. |
+| Right logo | `{{LOGO_RIGHT_PATH}}` | Optional. Path to right-header logo image, relative to `src/`. Empty → slot renders empty. Defaults to `assets/example-logo.png`. |
 | Bank name | `{{BANK_NAME}}` | Full bank name |
 | Bank code | `{{BANK_CODE}}` | Bank institution code |
 | Branch-account number | `{{BANK_ACCOUNT}}` | Branch code + account number |
@@ -87,7 +88,8 @@ These values are stored in environment variables or a config file (never hardcod
 ```
 SENDER_NAME=
 SENDER_ADDRESS=
-LOGO_PATH=assets/vence-zaraffa-logo.png
+LOGO_LEFT_PATH=
+LOGO_RIGHT_PATH=assets/example-logo.png
 BANK_NAME=
 BANK_CODE=
 BANK_ACCOUNT=
@@ -184,6 +186,10 @@ The PDF must match the existing Vence invoice design as closely as possible.
 
 ## Logo Assets
 
-The logo file must be included in the project repository at the path specified by `{{LOGO_PATH}}`. The logo image should be the dual VENCE + ZARAFFA logo as shown in the reference invoice.
+The invoice header has two logo slots — left and right — controlled by `LOGO_LEFT_PATH` and `LOGO_RIGHT_PATH`. Both are optional. Each path is resolved relative to `src/` (WeasyPrint's `base_url`).
 
-The actual logo file needs to be provided during the build phase.
+- Empty / unset → that slot renders nothing (no `<img>` tag, no broken-image icon).
+- Set one → only that slot renders.
+- Set both → they render side by side.
+
+The repo ships with `src/assets/example-logo.png` as the default for the right slot so a fresh clone renders a visible placeholder. Drop your own image into `src/assets/` and point the env var at it to override.
