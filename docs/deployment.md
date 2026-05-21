@@ -171,7 +171,10 @@ FPS_ID=
 BUSINESS_REGISTRATION=
 
 # === Template ===
-LOGO_PATH=assets/vence-zaraffa-logo.png
+# Two optional logo slots in the invoice header. Empty = slot renders empty.
+# Paths are relative to src/.
+LOGO_LEFT_PATH=
+LOGO_RIGHT_PATH=assets/example-logo.png
 
 # === Cost Guardrails ===
 DAILY_CLAUDE_API_CAP=20

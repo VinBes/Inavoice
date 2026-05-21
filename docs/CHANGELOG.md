@@ -8,6 +8,25 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-21 — Two configurable logo slots replace single mandatory logo
+
+- Spec ([docs/template-spec.md](template-spec.md)) described one mandatory logo
+  controlled by `LOGO_PATH`. Implementation never actually wired the env var
+  through — the template hardcoded the filename, so `LOGO_PATH` was loaded
+  into `config.py` and read by nothing. Bug surfaced during public-repo prep.
+- Replaced with two optional slots (`LOGO_LEFT_PATH`, `LOGO_RIGHT_PATH`),
+  both wired through `pdf_generator.py` into the Jinja context and rendered
+  conditionally in `invoice.html`. Empty / unset → slot renders no `<img>` tag.
+- Defaults: left empty, right points at new `src/assets/example-logo.png`
+  placeholder so a fresh clone renders something recognizable. The owner's
+  real `vence-zaraffa-logo.png` stays in the repo and is selected via Railway
+  env var override (`LOGO_RIGHT_PATH=assets/vence-zaraffa-logo.png`).
+- Added [tests/test_pdf_template.py](../tests/test_pdf_template.py) — first
+  tests against the Jinja layer. Renders the template directly without
+  WeasyPrint so they run on macOS dev hosts (which lack Pango/GObject).
+- Driven by the move to a public GitHub repo: forkers need a working default
+  and a documented way to swap in their own branding.
+
 ## 2026-05-21 — Add `phone` and `telegram_handle` columns to `contacts`
 
 - Real client onboarding revealed that aliases was being misused to stash

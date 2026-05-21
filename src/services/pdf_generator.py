@@ -36,6 +36,8 @@ async def generate_pdf(data: dict, invoice_number: str) -> bytes:
             rate=data.get("rate"),
             rate_type=data["rate_type"],
             total=data["total"],
+            logo_left_path=config.LOGO_LEFT_PATH or None,
+            logo_right_path=config.LOGO_RIGHT_PATH or None,
             sender_name=config.SENDER_NAME,
             sender_address_lines=_split_lines(config.SENDER_ADDRESS),
             account_holder=config.ACCOUNT_HOLDER,
