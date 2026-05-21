@@ -1,8 +1,12 @@
 # Inavoice
 
-Dictate an invoice to a Telegram bot. Get back a PDF, optionally emailed to the client.
+Voice to invoice using a Telegram bot. Get back a PDF, optionally emailed to the client.
 
-Personal tool, open-sourced as a learning project. Built around Claude for parsing, WeasyPrint for PDFs, Supabase for storage, and Resend for email. Deployed on Railway.
+## Why this exists
+
+Doing invoices manually always kept slipping my mind. I run a small operation out of Hong Kong (Zaraffa) and I invoice the same pool of clients regularly. The same invoice template, just different details. The repetition was annoying enough that I decided that in 2026, this should be as easy as sending a voice note.
+
+So I built it for myself. Voice in, PDF out, sent to the client if I want it sent. It's a tool I actually use, and I will keep improving it along the way. 
 
 ## How it works
 
@@ -43,7 +47,7 @@ See [docs/spec.md](docs/spec.md) for the full system spec and [docs/deployment.m
 src/         bot handlers, services, models, DB layer, PDF template
 docs/        spec documents (system, LLM parsing, template, email, deployment, testing)
 tests/       pytest suite with Claude response fixtures
-hooks/       pre-push hook (tests + pip-audit)
+hooks/       git pre-push hook (tests + pip-audit) and a Claude Code read-block hook
 ```
 
 ## Logos
@@ -58,7 +62,7 @@ The invoice header has two logo slots, controlled by `LOGO_LEFT_PATH` and `LOGO_
 ## Notes for forkers
 
 - The PDF template ([src/templates/invoice.html](src/templates/invoice.html)) is hardcoded to a Hong Kong–style layout (HKD, FPS, business registration). Adapt as needed.
-- Database schema is not bundled; you'll create tables in your own Supabase project. See `src/db/` for the queries each table needs to support.
+- Database schema is not bundled; you'll create tables in your own Supabase project. See [src/db/](src/db/) for the queries each table needs to support.
 - This is a single-user tool. There is no multi-tenant auth, no UI beyond Telegram, and no plan to add either.
 
 ## License
