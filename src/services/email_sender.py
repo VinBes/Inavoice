@@ -29,11 +29,12 @@ async def send_invoice_email(
         return None
 
     greeting = contact_person or display_name
+    signature = f"{config.SENDER_NAME}\n{config.SENDER_COMPANY}" if config.SENDER_COMPANY else config.SENDER_NAME
     body = (
         f"Dear {greeting},\n\n"
         f"Please find attached invoice {invoice_number} for services rendered.\n\n"
         f"Payment is due by {due_date}. Payment details are included in the invoice.\n\n"
-        f"Kind regards,\n{config.SENDER_NAME}\nZaraffa"
+        f"Kind regards,\n{signature}"
     )
 
     def _sync() -> dict:

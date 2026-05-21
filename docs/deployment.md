@@ -151,7 +151,7 @@ ANTHROPIC_API_KEY=
 # === Resend (Email) ===
 RESEND_API_KEY=
 RESEND_WEBHOOK_SECRET=  # required; matches the secret shown in the Resend webhook dashboard for /webhooks/resend
-EMAIL_FROM_ADDRESS=invoice@zaraffa.online
+EMAIL_FROM_ADDRESS=  # required; verified Resend sender, e.g. invoice@yourdomain.com
 
 # === Supabase ===
 SUPABASE_URL=
@@ -162,6 +162,7 @@ DATABASE_URL=postgresql://dev:dev@db:5432/inavoice
 
 # === Invoice Sender Details ===
 SENDER_NAME=
+SENDER_COMPANY=
 SENDER_ADDRESS=
 ACCOUNT_HOLDER=
 BANK_NAME=

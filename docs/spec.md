@@ -279,7 +279,7 @@ class Session:
 - All secrets in environment variables (never in code or tracked files)
 - No PII or bank details in source code — `{{VARIABLE}}` references only
 - Telegram bot token: scoped to this bot
-- Email credentials: scoped to invoice@zaraffa.online
+- Email credentials: scoped to the `EMAIL_FROM_ADDRESS` configured for the deploy
 - Docker container isolation
 - HTTPS for all external API calls
 - Structured logging redacts sensitive data (no addresses or bank details in logs)
