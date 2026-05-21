@@ -142,12 +142,14 @@ async def test_ca_5_skip_optional_field():
 
 async def test_ca_6_invalid_default_rate_rejected():
     _sessions.clear()
-    _sessions[_CHAT_ID] = _add_contact_session(step=7)
+    # step 9 = default_rate (after client_id, display_name, address, contact_person,
+    # email, phone, telegram_handle, default_description, default_service_description)
+    _sessions[_CHAT_ID] = _add_contact_session(step=9)
     update = _make_message_update("-50")
     ctx = _make_context()
     await handle_message(update, ctx)
 
-    assert _sessions[_CHAT_ID].contact_draft["_step"] == 7
+    assert _sessions[_CHAT_ID].contact_draft["_step"] == 9
     assert "positive" in update.message.reply_text.await_args[0][0].lower()
 
 
@@ -175,6 +177,8 @@ async def test_ca_7_full_happy_path_reaches_summary():
         "HK address",                # address
         "skip",                      # contact_person
         "billing@new-client.com",    # email
+        "skip",                      # phone
+        "skip",                      # telegram_handle
         "skip",                      # default_description
         "skip",                      # default_service_description
         "500",                       # default_rate
@@ -185,7 +189,7 @@ async def test_ca_7_full_happy_path_reaches_summary():
         ctx = _make_context()
         await handle_message(update, ctx)
 
-    # All 9 steps consumed; final reply should include summary + keyboard
+    # All 11 steps consumed; final reply should include summary + keyboard
     final_call = update.message.reply_text.await_args
     assert "Contact Preview" in final_call[0][0]
     assert final_call.kwargs.get("reply_markup") is not None
@@ -195,16 +199,18 @@ async def test_ca_7_full_happy_path_reaches_summary():
 
 
 async def test_ca_aliases_step_accepts_comma_string():
-    """Aliases is the last step (index 8); a comma-separated string is stored verbatim."""
+    """Aliases is the last step (index 10); a comma-separated string is stored verbatim."""
     _sessions.clear()
     _sessions[_CHAT_ID] = _add_contact_session(
-        step=8,
+        step=10,
         draft_extras={
             "client_id": "aesthetic_radio",
             "display_name": "Aesthetic Radio HK",
             "address": "HK",
             "contact_person": None,
             "email": None,
+            "phone": None,
+            "telegram_handle": None,
             "default_description": None,
             "default_service_description": None,
             "default_rate": None,
@@ -215,7 +221,7 @@ async def test_ca_aliases_step_accepts_comma_string():
     await handle_message(update, ctx)
 
     # Step advances past the last index; draft holds the raw string.
-    assert _sessions[_CHAT_ID].contact_draft["_step"] == 9
+    assert _sessions[_CHAT_ID].contact_draft["_step"] == 11
     assert _sessions[_CHAT_ID].contact_draft["aliases"] == "AER, aesthetic"
     # Summary message includes the aliases line.
     final_call = update.message.reply_text.await_args
@@ -226,13 +232,15 @@ async def test_ca_aliases_step_skip_clears():
     """Aliases is optional; `skip` should store None (Contact coerces to [])."""
     _sessions.clear()
     _sessions[_CHAT_ID] = _add_contact_session(
-        step=8,
+        step=10,
         draft_extras={
             "client_id": "aesthetic_radio",
             "display_name": "Aesthetic Radio HK",
             "address": "HK",
             "contact_person": None,
             "email": None,
+            "phone": None,
+            "telegram_handle": None,
             "default_description": None,
             "default_service_description": None,
             "default_rate": None,
@@ -242,7 +250,7 @@ async def test_ca_aliases_step_skip_clears():
     ctx = _make_context()
     await handle_message(update, ctx)
 
-    assert _sessions[_CHAT_ID].contact_draft["_step"] == 9
+    assert _sessions[_CHAT_ID].contact_draft["_step"] == 11
     assert _sessions[_CHAT_ID].contact_draft["aliases"] is None
 
 

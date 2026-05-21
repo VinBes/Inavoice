@@ -53,6 +53,16 @@ def _validate_email(text: str) -> str:
     return text
 
 
+def _validate_phone(text: str) -> str:
+    Contact(client_id="x", display_name="x", address="x", phone=text)
+    return text
+
+
+def _validate_telegram(text: str) -> str:
+    Contact(client_id="x", display_name="x", address="x", telegram_handle=text)
+    return text
+
+
 def _validate_rate(text: str) -> Decimal:
     try:
         rate = Decimal(text)
@@ -92,6 +102,18 @@ _STEPS: tuple[_Step, ...] = (
         "Client email address for invoices? Type `skip` if you'll only deliver via Telegram.",
         required=False,
         validate=_validate_email,
+    ),
+    _Step(
+        "phone",
+        "Phone number? Include country code, e.g. `+852 6900 3561`. Type `skip` if none.",
+        required=False,
+        validate=_validate_phone,
+    ),
+    _Step(
+        "telegram_handle",
+        "Telegram handle? e.g. `@username`. Type `skip` if none.",
+        required=False,
+        validate=_validate_telegram,
     ),
     _Step(
         "default_description",
@@ -306,6 +328,8 @@ _EDITABLE_FIELDS: tuple[str, ...] = (
     "address",
     "contact_person",
     "email",
+    "phone",
+    "telegram_handle",
     "default_description",
     "default_service_description",
     "default_rate",

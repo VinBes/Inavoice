@@ -8,6 +8,24 @@ Format: `YYYY-MM-DD — [area] description (reason if not obvious)`
 
 ## [Unreleased]
 
+## 2026-05-21 — Add `phone` and `telegram_handle` columns to `contacts`
+
+- Real client onboarding revealed that aliases was being misused to stash
+  phone numbers and Telegram handles. Aliases are for lookup nicknames only,
+  so we added dedicated nullable `phone` and `telegram_handle` columns to the
+  `contacts` table. Telegram handle gets its own field (rather than a generic
+  "notes" column) because this is a Telegram bot and the long-term plan is to
+  deliver invoices via Telegram DM to the client when no email is on file.
+- `Contact` Pydantic model gained matching fields with light validation:
+  phone must start with `+` and country code; telegram handle must start with
+  `@` and be 5–33 chars.
+- The /contacts add flow now asks for phone and telegram after email; the
+  edit picker exposes both as editable fields; the contact preview message
+  shows them.
+- LLM prompt and PDF template intentionally untouched — phone/telegram are
+  not needed on the invoice itself, and exposing them to the LLM would only
+  bloat the prompt without improving client matching.
+
 ## 2026-05-21 — Railway webhook diagnostic (no-op)
 
 - After PR #25 merged, Railway's auto-deploy did not pick up the merge —
