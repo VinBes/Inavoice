@@ -155,7 +155,6 @@ EMAIL_FROM_ADDRESS=invoice@zaraffa.online
 
 # === Supabase ===
 SUPABASE_URL=
-SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_KEY=
 
 # === Database (local dev only) ===
