@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/read_hook.py"
+          }
+        ]
+      }
+    ]
+  }
+}
